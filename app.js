@@ -11,7 +11,7 @@ import {
     remove,
     onChildAdded
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig } from './firebase-config.js?v=2';
 
 // Variables globales
 let currentUser = {
@@ -605,4 +605,5 @@ window.addEventListener('beforeunload', () => {
 document.addEventListener('DOMContentLoaded', () => {
     initializeFirebaseApp();  // CHANGEMENT: Appel à la fonction renommée
 });
+
 
