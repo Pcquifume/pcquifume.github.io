@@ -1,4 +1,3 @@
-
 // Configuration Firebase pour votre projet ChatApp
 export const firebaseConfig = {
     apiKey: "AIzaSyCb5Xkn-d2xiyQ8isQcan5v7L-i5RbxcBs",
