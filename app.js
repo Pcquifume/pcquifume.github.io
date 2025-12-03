@@ -8,8 +8,7 @@ import {
     onValue, 
     update, 
     remove,
-    onChildAdded,
-    serverTimestamp 
+    onChildAdded
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 import { firebaseConfig } from './firebase-config.js';
 
@@ -27,7 +26,8 @@ let rooms = {};
 let users = {};
 let db;
 
-function initializeFirebase() {
+// Initialiser Firebase
+function initializeFirebaseApp() {  // CHANGEMENT: Renommé la fonction
     try {
         const app = initializeApp(firebaseConfig);
         db = getDatabase(app);
@@ -50,12 +50,26 @@ function initializeFirebase() {
         currentUser.id = generateUserId();
         
         // Initialiser l'application
-        initializeApp();
+        initChatApp();  // CHANGEMENT: Appel à la nouvelle fonction
         
     } catch (error) {
         console.error("Erreur d'initialisation Firebase:", error);
         alert("Erreur de connexion à la base de données: " + error.message);
     }
+}
+
+// Initialiser l'application de chat (renommé)
+function initChatApp() {  // CHANGEMENT: Nouveau nom pour éviter le conflit
+    console.log("Application de chat initialisée");
+    
+    // Charger les données initiales
+    loadRooms();
+    loadUsers();
+    setupEventListeners();
+    joinRoom(currentRoom);
+    
+    // Enregistrer l'utilisateur dans Firebase
+    registerUser();
 }
 
 // Afficher un avertissement si databaseURL n'est pas configuré
@@ -85,20 +99,6 @@ function showDatabaseWarning() {
 // Générer un ID utilisateur unique
 function generateUserId() {
     return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
-
-// Initialiser l'application
-function initializeApp() {
-    console.log("Application initialisée");
-    
-    // Charger les données initiales
-    loadRooms();
-    loadUsers();
-    setupEventListeners();
-    joinRoom(currentRoom);
-    
-    // Enregistrer l'utilisateur dans Firebase
-    registerUser();
 }
 
 // Enregistrer l'utilisateur dans la liste des utilisateurs en ligne
@@ -231,9 +231,6 @@ function joinRoom(roomId) {
     if (currentRoom) {
         const prevRoomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
         remove(prevRoomRef);
-        
-        // Arrêter d'écouter les messages du salon précédent
-        // (Firebase v12 gère automatiquement les listeners)
     }
     
     // Mettre à jour la salle courante
@@ -605,5 +602,5 @@ window.addEventListener('beforeunload', () => {
 
 // Initialiser Firebase quand la page est chargée
 document.addEventListener('DOMContentLoaded', () => {
-    initializeFirebase();
+    initializeFirebaseApp();  // CHANGEMENT: Appel à la fonction renommée
 });
