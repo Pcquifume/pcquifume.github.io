@@ -1,5 +1,4 @@
 // Import des fonctions Firebase
-//test
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
 import { 
     getDatabase, 
@@ -11,7 +10,7 @@ import {
     remove,
     onChildAdded
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js?v=2';
+import { firebaseConfig } from './firebase-config.js';  // Import de la config
 
 // Variables globales
 let currentUser = {
@@ -28,12 +27,11 @@ let users = {};
 let db;
 
 // Initialiser Firebase
-function initializeFirebaseApp() {  // CHANGEMENT: Renommé la fonction
+function initializeFirebaseApp() {
     try {
-        const app = initializeApp(firebaseConfig);
+        const app = initializeApp(firebaseConfig);  // Utilise la config importée
         db = getDatabase(app);
         
-        // Vérifier la connexion à la base de données
         console.log("Firebase initialisé avec succès!");
         console.log("Database URL:", firebaseConfig.databaseURL);
         
@@ -605,5 +603,6 @@ window.addEventListener('beforeunload', () => {
 document.addEventListener('DOMContentLoaded', () => {
     initializeFirebaseApp();  // CHANGEMENT: Appel à la fonction renommée
 });
+
 
 
