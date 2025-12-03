@@ -1,134 +1,26 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Moderne</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
-</head>
-<body>
-    <div class="container">
-        <!-- Sidebar des salons -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2><i class="fas fa-comments"></i> ChatRoom</h2>
-                <button id="create-room-btn" class="btn-create">
-                    <i class="fas fa-plus"></i> Nouveau Salon
-                </button>
-            </div>
-            
-            <div class="user-profile">
-                <div class="avatar-selector">
-                    <img id="current-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=User" alt="Avatar">
-                    <div class="avatar-options" id="avatar-options">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" data-seed="Alex">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Taylor" data-seed="Taylor">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan" data-seed="Jordan">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Casey" data-seed="Casey">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Riley" data-seed="Riley">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Skyler" data-seed="Skyler">
-                    </div>
-                </div>
-                <div class="user-info">
-                    <input type="text" id="username-input" placeholder="Votre pseudo" value="Une personne">
-                    <div class="user-status">
-                        <span class="status-indicator online"></span>
-                        <span id="user-count">0</span> connectés
-                    </div>
-                </div>
-            </div>
-            
-            <div class="rooms-section">
-                <h3><i class="fas fa-hashtag"></i> Salons de discussion</h3>
-                <div class="room-list" id="room-list">
-                    <!-- Les salons seront ajoutés ici dynamiquement -->
-                    <div class="room-item active" data-room="general">
-                        <i class="fas fa-globe"></i>
-                        <span>Général</span>
-                        <span class="room-counter">0</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="online-users">
-                <h3><i class="fas fa-users"></i> En ligne</h3>
-                <div class="user-list" id="user-list">
-                    <!-- Les utilisateurs en ligne seront ajoutés ici -->
-                </div>
-            </div>
-        </div>
-        
-        <!-- Zone de chat principale -->
-        <div class="main-chat">
-            <div class="chat-header">
-                <div class="room-info">
-                    <h2 id="current-room">Général</h2>
-                    <p id="room-description">Salon de discussion général</p>
-                </div>
-                <div class="typing-indicator" id="typing-indicator">
-                    <!-- Indicateur de saisie -->
-                </div>
-            </div>
-            
-            <div class="messages-container" id="messages-container">
-                <!-- Les messages seront ajoutés ici dynamiquement -->
-                <div class="welcome-message">
-                    <div class="welcome-avatar">
-                        <i class="fas fa-robot"></i>
-                    </div>
-                    <div class="welcome-text">
-                        <h3>Bienvenue sur ChatRoom!</h3>
-                        <p>Rejoignez un salon ou créez-en un nouveau pour commencer à discuter.</p>
-                        <p>Vous pouvez changer votre avatar et votre pseudo à tout moment.</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="message-input-area">
-                <div class="input-container">
-                    <input type="text" id="message-input" placeholder="Écrivez votre message ici..." autocomplete="off">
-                    <div class="input-actions">
-                        <button id="send-btn" class="btn-send">
-                            <i class="fas fa-paper-plane"></i> Envoyer
-                        </button>
-                    </div>
-                </div>
-                <div class="message-options">
-                    <span class="hint"><i class="fas fa-info-circle"></i> Appuyez sur Entrée pour envoyer, Shift+Entrée pour aller à la ligne</span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Modal pour créer un salon -->
-        <div id="create-room-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Créer un nouveau salon</h3>
-                    <span class="close-modal">&times;</span>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="room-name">Nom du salon</label>
-                        <input type="text" id="room-name" placeholder="Ex: Développement Web">
-                    </div>
-                    <div class="form-group">
-                        <label for="room-description-input">Description (optionnel)</label>
-                        <textarea id="room-description-input" placeholder="Description du salon..."></textarea>
-                    </div>
-                    <button id="confirm-create-room" class="btn-confirm">Créer le salon</button>
-                </div>
-            </div>
+<!-- Remplacer la section user-profile dans index.html -->
+<div class="user-profile">
+    <div class="avatar-selector">
+        <img id="current-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=User&backgroundColor=4f46e5" alt="Avatar">
+        <div class="avatar-options" id="avatar-options">
+            <!-- Avatars modernes -->
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=4f46e5" data-seed="Alex">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Taylor&backgroundColor=8b5cf6" data-seed="Taylor">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan&backgroundColor=10b981" data-seed="Jordan">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Casey&backgroundColor=f59e0b" data-seed="Casey">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Riley&backgroundColor=ef4444" data-seed="Riley">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Skyler&backgroundColor=ec4899" data-seed="Skyler">
+            <!-- Nouveaux avatars -->
+            <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Robot&backgroundColor=6b7280" data-seed="Robot" data-type="bottts">
+            <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Pixel&backgroundColor=3b82f6" data-seed="Pixel" data-type="pixel-art">
+            <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb&backgroundColor=10b981" data-seed="Thumb" data-type="thumbs">
         </div>
     </div>
-    
-    <!-- Scripts de l'application -->
-    <script type="module" src="./app.js?v=4"></script>
-</body>
-
-</html>
-
-
-
-
+    <div class="user-info">
+        <input type="text" id="username-input" placeholder="Votre pseudo" value="Une personne">
+        <div class="user-status">
+            <span class="status-indicator online"></span>
+            <span id="user-count">0</span> connectés
+        </div>
+    </div>
+</div>
