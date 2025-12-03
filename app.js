@@ -1,4 +1,5 @@
 // Import des fonctions Firebase
+//test
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
 import { 
     getDatabase, 
@@ -604,3 +605,4 @@ window.addEventListener('beforeunload', () => {
 document.addEventListener('DOMContentLoaded', () => {
     initializeFirebaseApp();  // CHANGEMENT: Appel à la fonction renommée
 });
+
