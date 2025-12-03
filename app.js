@@ -10,7 +10,7 @@ import {
     remove,
     onChildAdded
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js';  // Import de la config
+import { firebaseConfig } from './firebase-config.js';
 
 // Variables globales
 let currentUser = {
@@ -25,11 +25,12 @@ let currentRoom = "general";
 let rooms = {};
 let users = {};
 let db;
+let isInitialLoad = true;
 
 // Initialiser Firebase
 function initializeFirebaseApp() {
     try {
-        const app = initializeApp(firebaseConfig);  // Utilise la config importée
+        const app = initializeApp(firebaseConfig);
         db = getDatabase(app);
         
         console.log("Firebase initialisé avec succès!");
@@ -49,7 +50,7 @@ function initializeFirebaseApp() {
         currentUser.id = generateUserId();
         
         // Initialiser l'application
-        initChatApp();  // CHANGEMENT: Appel à la nouvelle fonction
+        initChatApp();
         
     } catch (error) {
         console.error("Erreur d'initialisation Firebase:", error);
@@ -57,42 +58,14 @@ function initializeFirebaseApp() {
     }
 }
 
-// Initialiser l'application de chat (renommé)
-function initChatApp() {  // CHANGEMENT: Nouveau nom pour éviter le conflit
+// Initialiser l'application de chat
+function initChatApp() {
     console.log("Application de chat initialisée");
     
     // Charger les données initiales
     loadRooms();
     loadUsers();
     setupEventListeners();
-    joinRoom(currentRoom);
-    
-    // Enregistrer l'utilisateur dans Firebase
-    registerUser();
-}
-
-// Afficher un avertissement si databaseURL n'est pas configuré
-function showDatabaseWarning() {
-    const messagesContainer = document.getElementById('messages-container');
-    const warning = document.createElement('div');
-    warning.className = 'warning-message';
-    warning.innerHTML = `
-        <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-            <h3 style="color: #856404; margin-bottom: 10px;">
-                <i class="fas fa-exclamation-triangle"></i> Configuration requise
-            </h3>
-            <p style="color: #856404;">
-                Pour que le chat fonctionne, vous devez:
-                <ol style="margin-left: 20px;">
-                    <li>Aller sur <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
-                    <li>Activer la <strong>Realtime Database</strong> dans votre projet</li>
-                    <li>Ajouter <code>databaseURL</code> dans le fichier firebase-config.js</li>
-                </ol>
-                Sans cette étape, le chat ne pourra pas sauvegarder les messages.
-            </p>
-        </div>
-    `;
-    messagesContainer.insertBefore(warning, messagesContainer.firstChild);
 }
 
 // Générer un ID utilisateur unique
@@ -119,7 +92,9 @@ function registerUser() {
     
     // Mettre à jour périodiquement le timestamp d'activité
     setInterval(() => {
-        update(userRef, { lastActive: Date.now() });
+        if (db) {
+            update(userRef, { lastActive: Date.now() });
+        }
     }, 30000);
 }
 
@@ -135,6 +110,12 @@ function loadRooms() {
         if (roomsData) {
             rooms = roomsData;
             updateRoomList();
+            
+            // Si c'est le premier chargement, rejoindre le salon général
+            if (isInitialLoad) {
+                isInitialLoad = false;
+                joinRoom("general");
+            }
         } else {
             // Créer le salon général par défaut
             rooms = {
@@ -145,7 +126,16 @@ function loadRooms() {
                     users: {}
                 }
             };
-            set(roomsRef, rooms);
+            
+            set(roomsRef, rooms).then(() => {
+                updateRoomList();
+                if (isInitialLoad) {
+                    isInitialLoad = false;
+                    joinRoom("general");
+                }
+            }).catch(error => {
+                console.error("Erreur lors de la création du salon général:", error);
+            });
         }
     });
 }
@@ -176,6 +166,8 @@ function loadUsers() {
 // Mettre à jour la liste des salons dans l'interface
 function updateRoomList() {
     const roomList = document.getElementById('room-list');
+    if (!roomList) return;
+    
     roomList.innerHTML = '';
     
     for (const roomId in rooms) {
@@ -202,6 +194,8 @@ function updateRoomList() {
 // Mettre à jour la liste des utilisateurs en ligne
 function updateUserList() {
     const userList = document.getElementById('user-list');
+    if (!userList) return;
+    
     userList.innerHTML = '';
     
     for (const userId in users) {
@@ -211,9 +205,9 @@ function updateUserList() {
         const userItem = document.createElement('div');
         userItem.className = 'user-item';
         userItem.innerHTML = `
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${user.avatar}" class="user-avatar" alt="${user.name}">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${user.avatar || 'User'}" class="user-avatar" alt="${user.name}">
             <div class="user-details">
-                <div class="user-name">${user.name}</div>
+                <div class="user-name">${user.name || 'Utilisateur'}</div>
                 <div class="user-activity">${user.isTyping ? 'est en train d\'écrire...' : 'en ligne'}</div>
             </div>
         `;
@@ -224,12 +218,33 @@ function updateUserList() {
 
 // Rejoindre un salon
 function joinRoom(roomId) {
-    if (!db) return;
+    if (!db) {
+        console.error("Firebase Database n'est pas initialisé");
+        return;
+    }
+    
+    // Vérifier si le salon existe
+    if (!rooms[roomId]) {
+        console.warn(`Le salon ${roomId} n'existe pas`);
+        
+        // Si c'est le salon général, créer une structure temporaire
+        if (roomId === "general") {
+            rooms[roomId] = {
+                name: "Général",
+                description: "Salon de discussion général",
+                users: {}
+            };
+        } else {
+            return;
+        }
+    }
     
     // Quitter le salon précédent
-    if (currentRoom) {
+    if (currentRoom && currentRoom !== roomId) {
         const prevRoomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-        remove(prevRoomRef);
+        remove(prevRoomRef).catch(error => {
+            console.error("Erreur en quittant le salon précédent:", error);
+        });
     }
     
     // Mettre à jour la salle courante
@@ -237,23 +252,38 @@ function joinRoom(roomId) {
     const room = rooms[roomId];
     
     // Mettre à jour l'interface
-    document.getElementById('current-room').textContent = room.name;
-    document.getElementById('room-description').textContent = room.description || "Salon de discussion";
+    const currentRoomElement = document.getElementById('current-room');
+    const roomDescriptionElement = document.getElementById('room-description');
+    
+    if (currentRoomElement) currentRoomElement.textContent = room.name;
+    if (roomDescriptionElement) roomDescriptionElement.textContent = room.description || "Salon de discussion";
     
     // Mettre à jour la liste des salons
     updateRoomList();
     
-    // Rejoindre le nouveau salon
+    // Enregistrer l'utilisateur s'il n'est pas encore enregistré
+    if (!users[currentUser.id]) {
+        registerUser();
+    }
+    
+    // Rejoindre le nouveau salon dans Firebase
     const roomRef = ref(db, `rooms/${roomId}/users/${currentUser.id}`);
     set(roomRef, {
         name: currentUser.name,
         avatar: currentUser.avatar,
         joined: Date.now()
+    }).catch(error => {
+        console.error("Erreur en rejoignant le salon:", error);
     });
     
     // Mettre à jour la salle courante de l'utilisateur
     const userRef = ref(db, `users/${currentUser.id}`);
-    update(userRef, { currentRoom: roomId });
+    update(userRef, { 
+        currentRoom: roomId,
+        lastActive: Date.now()
+    }).catch(error => {
+        console.error("Erreur mise à jour utilisateur:", error);
+    });
     
     // Charger les messages du salon
     loadMessages(roomId);
@@ -270,6 +300,7 @@ function loadMessages(roomId) {
     if (!db) return;
     
     const messagesContainer = document.getElementById('messages-container');
+    if (!messagesContainer) return;
     
     // Conserver uniquement le message de bienvenue
     const welcomeMessage = messagesContainer.querySelector('.welcome-message');
@@ -329,6 +360,8 @@ function listenToTypingIndicator(roomId) {
         const typingData = snapshot.val();
         const typingIndicator = document.getElementById('typing-indicator');
         
+        if (!typingIndicator) return;
+        
         if (typingData) {
             // Filtrer les utilisateurs qui sont en train de taper (sauf soi-même)
             const typingUsers = Object.values(typingData)
@@ -357,6 +390,8 @@ function listenToTypingIndicator(roomId) {
 // Afficher un message
 function displayMessage(message, messageId = null) {
     const messagesContainer = document.getElementById('messages-container');
+    if (!messagesContainer) return;
+    
     const isOwnMessage = message.userId === currentUser.id;
     
     const messageElement = document.createElement('div');
@@ -369,7 +404,7 @@ function displayMessage(message, messageId = null) {
     const timeString = time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     
     messageElement.innerHTML = `
-        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${message.avatar}" class="message-avatar" alt="${message.userName}">
+        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${message.avatar || 'User'}" class="message-avatar" alt="${message.userName}">
         <div class="message-content">
             <div class="message-header">
                 <span class="message-sender">${message.userName}</span>
@@ -390,6 +425,8 @@ function sendMessage() {
     }
     
     const messageInput = document.getElementById('message-input');
+    if (!messageInput) return;
+    
     const text = messageInput.value.trim();
     
     if (text === '') return;
@@ -406,7 +443,10 @@ function sendMessage() {
     // Envoyer le message à Firebase
     const messagesRef = ref(db, `messages/${currentRoom}`);
     const newMessageRef = push(messagesRef);
-    set(newMessageRef, message);
+    set(newMessageRef, message).catch(error => {
+        console.error("Erreur en envoyant le message:", error);
+        alert("Erreur en envoyant le message: " + error.message);
+    });
     
     // Réinitialiser le champ de saisie
     messageInput.value = '';
@@ -417,19 +457,21 @@ function sendMessage() {
 
 // Gérer l'indicateur de saisie
 function startTypingIndicator() {
-    if (!db || !currentUser.isTyping) {
+    if (!db) return;
+    
+    if (!currentUser.isTyping) {
         currentUser.isTyping = true;
         currentUser.lastTypingTime = Date.now();
         
-        if (db) {
-            const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
-            set(typingRef, {
-                userId: currentUser.id,
-                userName: currentUser.name,
-                isTyping: true,
-                timestamp: Date.now()
-            });
-        }
+        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
+        set(typingRef, {
+            userId: currentUser.id,
+            userName: currentUser.name,
+            isTyping: true,
+            timestamp: Date.now()
+        }).catch(error => {
+            console.error("Erreur indicateur de saisie:", error);
+        });
     } else {
         currentUser.lastTypingTime = Date.now();
     }
@@ -455,6 +497,8 @@ function stopTypingIndicator() {
             update(typingRef, {
                 isTyping: false,
                 timestamp: Date.now()
+            }).catch(error => {
+                console.error("Erreur arrêt indicateur de saisie:", error);
             });
         }
     }
@@ -463,7 +507,9 @@ function stopTypingIndicator() {
 // Faire défiler vers le bas de la conversation
 function scrollToBottom() {
     const messagesContainer = document.getElementById('messages-container');
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
 }
 
 // Créer un nouveau salon
@@ -490,51 +536,72 @@ function createRoom(name, description) {
     // Ajouter le salon à Firebase
     const roomsRef = ref(db, 'rooms');
     const roomRef = ref(db, `rooms/${roomId}`);
-    set(roomRef, newRoom);
-    
-    // Rejoindre le nouveau salon
-    joinRoom(roomId);
-    
-    // Fermer le modal
-    closeCreateRoomModal();
+    set(roomRef, newRoom).then(() => {
+        // Rejoindre le nouveau salon
+        joinRoom(roomId);
+        
+        // Fermer le modal
+        closeCreateRoomModal();
+    }).catch(error => {
+        console.error("Erreur création salon:", error);
+        alert("Erreur en créant le salon: " + error.message);
+    });
 }
 
 // Gestionnaires d'événements
 function setupEventListeners() {
     // Envoyer un message
-    document.getElementById('send-btn').addEventListener('click', sendMessage);
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
     
     // Envoyer avec la touche Entrée
-    document.getElementById('message-input').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    // Indicateur de saisie
-    document.getElementById('message-input').addEventListener('input', startTypingIndicator);
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Indicateur de saisie
+        messageInput.addEventListener('input', startTypingIndicator);
+    }
     
     // Changer de pseudo
-    document.getElementById('username-input').addEventListener('change', (e) => {
-        const newName = e.target.value.trim() || "Une personne";
-        currentUser.name = newName;
-        
-        // Mettre à jour dans Firebase
-        if (db && currentRoom) {
-            const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-            update(userRef, { name: newName });
+    const usernameInput = document.getElementById('username-input');
+    if (usernameInput) {
+        usernameInput.addEventListener('change', (e) => {
+            const newName = e.target.value.trim() || "Une personne";
+            currentUser.name = newName;
             
-            const usersRef = ref(db, `users/${currentUser.id}`);
-            update(usersRef, { name: newName });
-        }
-    });
+            // Mettre à jour dans Firebase
+            if (db && currentRoom) {
+                const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
+                update(userRef, { name: newName }).catch(error => {
+                    console.error("Erreur mise à jour pseudo:", error);
+                });
+                
+                const usersRef = ref(db, `users/${currentUser.id}`);
+                update(usersRef, { name: newName }).catch(error => {
+                    console.error("Erreur mise à jour pseudo utilisateur:", error);
+                });
+            }
+        });
+    }
     
     // Changer d'avatar
-    document.getElementById('current-avatar').addEventListener('click', () => {
-        const avatarOptions = document.getElementById('avatar-options');
-        avatarOptions.style.display = avatarOptions.style.display === 'flex' ? 'none' : 'flex';
-    });
+    const currentAvatar = document.getElementById('current-avatar');
+    if (currentAvatar) {
+        currentAvatar.addEventListener('click', () => {
+            const avatarOptions = document.getElementById('avatar-options');
+            if (avatarOptions) {
+                avatarOptions.style.display = avatarOptions.style.display === 'flex' ? 'none' : 'flex';
+            }
+        });
+    }
     
     // Sélectionner un avatar
     document.querySelectorAll('#avatar-options img').forEach(img => {
@@ -543,31 +610,55 @@ function setupEventListeners() {
             currentUser.avatar = seed;
             
             // Mettre à jour l'avatar affiché
-            document.getElementById('current-avatar').src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+            const currentAvatarImg = document.getElementById('current-avatar');
+            if (currentAvatarImg) {
+                currentAvatarImg.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+            }
             
             // Mettre à jour dans Firebase
             if (db && currentRoom) {
                 const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-                update(userRef, { avatar: seed });
+                update(userRef, { avatar: seed }).catch(error => {
+                    console.error("Erreur mise à jour avatar:", error);
+                });
                 
                 const usersRef = ref(db, `users/${currentUser.id}`);
-                update(usersRef, { avatar: seed });
+                update(usersRef, { avatar: seed }).catch(error => {
+                    console.error("Erreur mise à jour avatar utilisateur:", error);
+                });
             }
         });
     });
     
     // Modal pour créer un salon
-    document.getElementById('create-room-btn').addEventListener('click', () => {
-        document.getElementById('create-room-modal').style.display = 'flex';
-    });
+    const createRoomBtn = document.getElementById('create-room-btn');
+    if (createRoomBtn) {
+        createRoomBtn.addEventListener('click', () => {
+            const modal = document.getElementById('create-room-modal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+        });
+    }
     
-    document.querySelector('.close-modal').addEventListener('click', closeCreateRoomModal);
+    const closeModalBtn = document.querySelector('.close-modal');
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', closeCreateRoomModal);
+    }
     
-    document.getElementById('confirm-create-room').addEventListener('click', () => {
-        const roomName = document.getElementById('room-name').value;
-        const roomDescription = document.getElementById('room-description-input').value;
-        createRoom(roomName, roomDescription);
-    });
+    const confirmCreateRoomBtn = document.getElementById('confirm-create-room');
+    if (confirmCreateRoomBtn) {
+        confirmCreateRoomBtn.addEventListener('click', () => {
+            const roomNameInput = document.getElementById('room-name');
+            const roomDescInput = document.getElementById('room-description-input');
+            
+            if (roomNameInput && roomDescInput) {
+                const roomName = roomNameInput.value;
+                const roomDescription = roomDescInput.value;
+                createRoom(roomName, roomDescription);
+            }
+        });
+    }
     
     // Fermer le modal en cliquant à l'extérieur
     window.addEventListener('click', (e) => {
@@ -579,9 +670,16 @@ function setupEventListeners() {
 }
 
 function closeCreateRoomModal() {
-    document.getElementById('create-room-modal').style.display = 'none';
-    document.getElementById('room-name').value = '';
-    document.getElementById('room-description-input').value = '';
+    const modal = document.getElementById('create-room-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    const roomNameInput = document.getElementById('room-name');
+    const roomDescInput = document.getElementById('room-description-input');
+    
+    if (roomNameInput) roomNameInput.value = '';
+    if (roomDescInput) roomDescInput.value = '';
 }
 
 // Gestion de la connexion/déconnexion
@@ -590,19 +688,26 @@ window.addEventListener('beforeunload', () => {
         // Quitter le salon actuel
         if (currentRoom) {
             const roomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-            remove(roomRef);
+            remove(roomRef).catch(error => {
+                console.error("Erreur nettoyage salon:", error);
+            });
         }
         
         // Supprimer l'utilisateur de la liste des utilisateurs en ligne
         const userRef = ref(db, `users/${currentUser.id}`);
-        remove(userRef);
+        remove(userRef).catch(error => {
+            console.error("Erreur nettoyage utilisateur:", error);
+        });
+        
+        // Supprimer l'indicateur de saisie
+        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
+        remove(typingRef).catch(error => {
+            console.error("Erreur nettoyage indicateur de saisie:", error);
+        });
     }
 });
 
 // Initialiser Firebase quand la page est chargée
 document.addEventListener('DOMContentLoaded', () => {
-    initializeFirebaseApp();  // CHANGEMENT: Appel à la fonction renommée
+    initializeFirebaseApp();
 });
-
-
-
