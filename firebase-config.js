@@ -3,7 +3,7 @@
 export const firebaseConfig = {
     apiKey: "AIzaSyCb5Xkn-d2xiyQ8isQcan5v7L-i5RbxcBs",
     authDomain: "chat-app-4865d.firebaseapp.com",
-    databaseURL: "https://chat-app-4865d-default-rtdb.europe-west1.firebasedatabase.app", 
+    databaseURL: "https://chat-app-4865d-default-rtdb.europe-west1.firebasedatabase.app/", 
     projectId: "chat-app-4865d",
     storageBucket: "chat-app-4865d.firebasestorage.app",
     messagingSenderId: "251174960384",
@@ -15,4 +15,5 @@ export const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 
 // Exporter la référence à la base de données pour l'utiliser dans script.js
+
 window.db = firebase.database();
