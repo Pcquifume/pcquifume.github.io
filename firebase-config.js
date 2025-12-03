@@ -10,10 +10,3 @@ export const firebaseConfig = {
     appId: "1:251174960384:web:c1fa118f999f7eb02d47e5",
     measurementId: "G-CQKD7W7TKE"
 };
-
-// Initialiser Firebase
-firebase.initializeApp(firebaseConfig);
-
-// Exporter la référence à la base de données pour l'utiliser dans script.js
-
-window.db = firebase.database();
