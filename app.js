@@ -193,4 +193,643 @@ function updateRoomList() {
             joinRoom(roomId);
         });
         
-        room
+        roomList.appendChild(roomItem);
+    }
+}
+
+// Mettre à jour la liste des utilisateurs en ligne
+function updateUserList() {
+    const userList = document.getElementById('user-list');
+    if (!userList) return;
+    
+    userList.innerHTML = '';
+    
+    for (const userId in users) {
+        const user = users[userId];
+        if (userId === currentUser.id) continue;
+        
+        const userItem = document.createElement('div');
+        userItem.className = 'user-item';
+        userItem.innerHTML = `
+            <img src="https://api.dicebear.com/7.x/${user.avatarType || 'avataaars'}/svg?seed=${user.avatar || 'User'}&backgroundColor=4f46e5" class="user-avatar" alt="${user.name}">
+            <div class="user-details">
+                <div class="user-name">${user.name || 'Utilisateur'}</div>
+                <div class="user-activity">${user.isTyping ? 'est en train d\'écrire...' : 'en ligne'}</div>
+            </div>
+        `;
+        
+        userList.appendChild(userItem);
+    }
+}
+
+// Rejoindre un salon
+function joinRoom(roomId) {
+    if (!db) {
+        console.error("Firebase Database n'est pas initialisé");
+        return;
+    }
+    
+    // Vérifier si le salon existe
+    if (!rooms[roomId]) {
+        console.warn(`Le salon ${roomId} n'existe pas`);
+        
+        // Si c'est le salon général, créer une structure temporaire
+        if (roomId === "general") {
+            rooms[roomId] = {
+                name: "Général",
+                description: "Salon de discussion général",
+                users: {}
+            };
+        } else {
+            return;
+        }
+    }
+    
+    // Quitter le salon précédent
+    if (currentRoom && currentRoom !== roomId) {
+        const prevRoomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
+        remove(prevRoomRef).catch(error => {
+            console.error("Erreur en quittant le salon précédent:", error);
+        });
+    }
+    
+    // Mettre à jour la salle courante
+    currentRoom = roomId;
+    const room = rooms[roomId];
+    
+    // Mettre à jour l'interface
+    const currentRoomElement = document.getElementById('current-room');
+    const roomDescriptionElement = document.getElementById('room-description');
+    
+    if (currentRoomElement) currentRoomElement.textContent = room.name;
+    if (roomDescriptionElement) roomDescriptionElement.textContent = room.description || "Salon de discussion";
+    
+    // Mettre à jour la liste des salons
+    updateRoomList();
+    
+    // Enregistrer l'utilisateur s'il n'est pas encore enregistré
+    if (!users[currentUser.id]) {
+        registerUser();
+    }
+    
+    // Rejoindre le nouveau salon dans Firebase
+    const roomRef = ref(db, `rooms/${roomId}/users/${currentUser.id}`);
+    set(roomRef, {
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        avatarType: currentUser.avatarType,
+        joined: Date.now()
+    }).catch(error => {
+        console.error("Erreur en rejoignant le salon:", error);
+    });
+    
+    // Mettre à jour la salle courante de l'utilisateur
+    const userRef = ref(db, `users/${currentUser.id}`);
+    update(userRef, { 
+        currentRoom: roomId,
+        lastActive: Date.now()
+    }).catch(error => {
+        console.error("Erreur mise à jour utilisateur:", error);
+    });
+    
+    // Charger les messages du salon
+    loadMessages(roomId);
+    
+    // Écouter les nouveaux messages
+    listenToNewMessages(roomId);
+    
+    // Écouter les indicateurs de saisie
+    listenToTypingIndicator(roomId);
+}
+
+// Charger les messages d'un salon
+function loadMessages(roomId) {
+    if (!db) return;
+    
+    const messagesContainer = document.getElementById('messages-container');
+    if (!messagesContainer) return;
+    
+    // Conserver uniquement le message de bienvenue
+    const welcomeMessage = messagesContainer.querySelector('.welcome-message');
+    messagesContainer.innerHTML = '';
+    if (welcomeMessage) {
+        messagesContainer.appendChild(welcomeMessage);
+    }
+    
+    const messagesRef = ref(db, `messages/${roomId}`);
+    
+    onValue(messagesRef, (snapshot) => {
+        const messagesData = snapshot.val();
+        
+        if (messagesData) {
+            // Convertir l'objet en tableau et trier par timestamp
+            const messagesArray = Object.values(messagesData);
+            messagesArray.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Afficher seulement les 100 derniers messages
+            const recentMessages = messagesArray.slice(-MAX_MESSAGES_PER_ROOM);
+            
+            // Afficher chaque message
+            recentMessages.forEach(message => {
+                displayMessage(message);
+            });
+            
+            // Mettre à jour le compteur
+            updateMessageCounter(messagesArray.length);
+            
+            // Faire défiler vers le bas
+            scrollToBottom();
+        } else {
+            updateMessageCounter(0);
+        }
+    });
+}
+
+// Fonction pour mettre à jour le compteur de messages
+function updateMessageCounter(count) {
+    const counter = document.getElementById('message-counter');
+    if (counter) {
+        counter.textContent = `${count}/${MAX_MESSAGES_PER_ROOM} messages`;
+        
+        // Changer la couleur si proche de la limite
+        if (count > MAX_MESSAGES_PER_ROOM * 0.9) {
+            counter.style.color = 'var(--danger)';
+            counter.style.background = 'rgba(239, 68, 68, 0.1)';
+        } else if (count > MAX_MESSAGES_PER_ROOM * 0.7) {
+            counter.style.color = 'var(--warning)';
+            counter.style.background = 'rgba(245, 158, 11, 0.1)';
+        } else {
+            counter.style.color = 'var(--gray)';
+            counter.style.background = 'var(--light)';
+        }
+    }
+}
+
+// Écouter les nouveaux messages
+function listenToNewMessages(roomId) {
+    if (!db) return;
+    
+    const messagesRef = ref(db, `messages/${roomId}`);
+    
+    onChildAdded(messagesRef, (snapshot) => {
+        const message = snapshot.val();
+        const messageId = snapshot.key;
+        
+        // Vérifier si le message n'a pas déjà été affiché
+        const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
+        
+        if (!existingMessage) {
+            displayMessage(message, messageId);
+            scrollToBottom();
+        }
+    });
+}
+
+// Écouter les indicateurs de saisie
+function listenToTypingIndicator(roomId) {
+    if (!db) return;
+    
+    const typingRef = ref(db, `typing/${roomId}`);
+    
+    onValue(typingRef, (snapshot) => {
+        const typingData = snapshot.val();
+        const typingIndicator = document.getElementById('typing-indicator');
+        
+        if (!typingIndicator) return;
+        
+        if (typingData) {
+            // Filtrer les utilisateurs qui sont en train de taper (sauf soi-même)
+            const typingUsers = Object.values(typingData)
+                .filter(user => user.userId !== currentUser.id && user.isTyping)
+                .map(user => user.userName);
+            
+            if (typingUsers.length > 0) {
+                let text = '';
+                if (typingUsers.length === 1) {
+                    text = `${typingUsers[0]} est en train d'écrire...`;
+                } else if (typingUsers.length === 2) {
+                    text = `${typingUsers[0]} et ${typingUsers[1]} sont en train d'écrire...`;
+                } else {
+                    text = `${typingUsers[0]} et ${typingUsers.length - 1} autres sont en train d'écrire...`;
+                }
+                typingIndicator.textContent = text;
+            } else {
+                typingIndicator.textContent = '';
+            }
+        } else {
+            typingIndicator.textContent = '';
+        }
+    });
+}
+
+// Afficher un message
+function displayMessage(message, messageId = null) {
+    const messagesContainer = document.getElementById('messages-container');
+    if (!messagesContainer) return;
+    
+    const isOwnMessage = message.userId === currentUser.id;
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `message ${isOwnMessage ? 'own' : ''}`;
+    if (messageId) {
+        messageElement.setAttribute('data-message-id', messageId);
+    }
+    
+    const time = new Date(message.timestamp);
+    const timeString = time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    
+    // Déterminer l'URL de l'avatar selon le type
+    const avatarType = message.avatarType || 'avataaars';
+    let avatarUrl = `https://api.dicebear.com/7.x/${avatarType}/svg?seed=${message.avatar || 'User'}`;
+    
+    // Ajouter un fond coloré
+    if (avatarType === 'bottts') {
+        avatarUrl += '&backgroundColor=6b7280';
+    } else if (avatarType === 'pixel-art') {
+        avatarUrl += '&backgroundColor=3b82f6';
+    } else if (avatarType === 'thumbs') {
+        avatarUrl += '&backgroundColor=10b981';
+    } else {
+        avatarUrl += '&backgroundColor=4f46e5';
+    }
+    
+    messageElement.innerHTML = `
+        <img src="${avatarUrl}" class="message-avatar" alt="${message.userName}">
+        <div class="message-content">
+            <div class="message-header">
+                <span class="message-sender">${message.userName}</span>
+                <span class="message-time">${timeString}</span>
+            </div>
+            <div class="message-text">${message.text}</div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(messageElement);
+}
+
+// Envoyer un message
+async function sendMessage() {
+    if (!db) {
+        alert("Base de données non connectée.");
+        return;
+    }
+    
+    const messageInput = document.getElementById('message-input');
+    if (!messageInput) return;
+    
+    const text = messageInput.value.trim();
+    
+    if (text === '') return;
+    
+    // Prévenir l'envoi de messages trop rapides
+    const now = Date.now();
+    if (now - lastMessageTime < MESSAGE_COOLDOWN) {
+        console.log("Attendez avant d'envoyer un autre message");
+        return;
+    }
+    lastMessageTime = now;
+    
+    const message = {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        avatar: currentUser.avatar,
+        avatarType: currentUser.avatarType,
+        text: text,
+        timestamp: Date.now(),
+        roomId: currentRoom
+    };
+    
+    try {
+        // Envoyer le message à Firebase
+        const messagesRef = ref(db, `messages/${currentRoom}`);
+        const newMessageRef = push(messagesRef);
+        await set(newMessageRef, message);
+        
+        // Limiter le nombre de messages
+        await limitMessages(currentRoom);
+        
+        // Réinitialiser le champ de saisie
+        messageInput.value = '';
+        
+        // Arrêter l'indicateur de saisie
+        stopTypingIndicator();
+        
+    } catch (error) {
+        console.error("Erreur en envoyant le message:", error);
+        alert("Erreur en envoyant le message: " + error.message);
+    }
+}
+
+// Fonction pour limiter les messages à 100 par salon
+async function limitMessages(roomId) {
+    if (!db) return;
+    
+    try {
+        const messagesRef = ref(db, `messages/${roomId}`);
+        const snapshot = await get(messagesRef);
+        
+        if (snapshot.exists()) {
+            const messages = snapshot.val();
+            const messageIds = Object.keys(messages);
+            
+            // Si plus de 100 messages, supprimer les plus anciens
+            if (messageIds.length > MAX_MESSAGES_PER_ROOM) {
+                // Trier les messages par timestamp
+                const sortedMessages = Object.entries(messages)
+                    .sort(([, a], [, b]) => a.timestamp - b.timestamp);
+                
+                // Garder seulement les 100 plus récents
+                const toKeep = sortedMessages.slice(-MAX_MESSAGES_PER_ROOM);
+                const toDelete = sortedMessages.slice(0, sortedMessages.length - MAX_MESSAGES_PER_ROOM);
+                
+                // Supprimer les anciens messages
+                for (const [messageId] of toDelete) {
+                    const messageRef = ref(db, `messages/${roomId}/${messageId}`);
+                    await remove(messageRef);
+                }
+                
+                console.log(`Supprimé ${toDelete.length} anciens messages`);
+            }
+        }
+    } catch (error) {
+        console.error("Erreur limitation messages:", error);
+    }
+}
+
+// Gérer l'indicateur de saisie
+function startTypingIndicator() {
+    if (!db) return;
+    
+    if (!currentUser.isTyping) {
+        currentUser.isTyping = true;
+        currentUser.lastTypingTime = Date.now();
+        
+        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
+        set(typingRef, {
+            userId: currentUser.id,
+            userName: currentUser.name,
+            isTyping: true,
+            timestamp: Date.now()
+        }).catch(error => {
+            console.error("Erreur indicateur de saisie:", error);
+        });
+    } else {
+        currentUser.lastTypingTime = Date.now();
+    }
+    
+    // Vérifier périodiquement si l'utilisateur a arrêté de taper
+    setTimeout(checkTyping, 1000);
+}
+
+function checkTyping() {
+    const timeSinceLastTyping = Date.now() - currentUser.lastTypingTime;
+    
+    if (timeSinceLastTyping > 2000 && currentUser.isTyping) {
+        stopTypingIndicator();
+    }
+}
+
+function stopTypingIndicator() {
+    if (currentUser.isTyping) {
+        currentUser.isTyping = false;
+        
+        if (db) {
+            const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
+            update(typingRef, {
+                isTyping: false,
+                timestamp: Date.now()
+            }).catch(error => {
+                console.error("Erreur arrêt indicateur de saisie:", error);
+            });
+        }
+    }
+}
+
+// Faire défiler vers le bas de la conversation
+function scrollToBottom() {
+    const messagesContainer = document.getElementById('messages-container');
+    if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+}
+
+// Créer un nouveau salon
+function createRoom(name, description) {
+    if (!db) {
+        alert("Base de données non connectée. Impossible de créer un salon.");
+        return;
+    }
+    
+    if (!name || name.trim() === '') {
+        alert('Veuillez donner un nom au salon');
+        return;
+    }
+    
+    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    const newRoom = {
+        name: name.trim(),
+        description: description || '',
+        created: Date.now(),
+        users: {}
+    };
+    
+    // Ajouter le salon à Firebase
+    const roomsRef = ref(db, 'rooms');
+    const roomRef = ref(db, `rooms/${roomId}`);
+    set(roomRef, newRoom).then(() => {
+        // Rejoindre le nouveau salon
+        joinRoom(roomId);
+        
+        // Fermer le modal
+        closeCreateRoomModal();
+    }).catch(error => {
+        console.error("Erreur création salon:", error);
+        alert("Erreur en créant le salon: " + error.message);
+    });
+}
+
+// Gestionnaires d'événements
+function setupEventListeners() {
+    // Envoyer un message
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
+    
+    // Envoyer avec la touche Entrée
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) {
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Indicateur de saisie
+        messageInput.addEventListener('input', startTypingIndicator);
+    }
+    
+    // Changer de pseudo
+    const usernameInput = document.getElementById('username-input');
+    if (usernameInput) {
+        usernameInput.addEventListener('change', (e) => {
+            const newName = e.target.value.trim() || "Une personne";
+            currentUser.name = newName;
+            
+            // Mettre à jour dans Firebase
+            if (db && currentRoom) {
+                const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
+                update(userRef, { name: newName }).catch(error => {
+                    console.error("Erreur mise à jour pseudo:", error);
+                });
+                
+                const usersRef = ref(db, `users/${currentUser.id}`);
+                update(usersRef, { name: newName }).catch(error => {
+                    console.error("Erreur mise à jour pseudo utilisateur:", error);
+                });
+            }
+        });
+    }
+    
+    // Changer d'avatar
+    const currentAvatar = document.getElementById('current-avatar');
+    if (currentAvatar) {
+        currentAvatar.addEventListener('click', () => {
+            const avatarOptions = document.getElementById('avatar-options');
+            if (avatarOptions) {
+                avatarOptions.style.display = avatarOptions.style.display === 'flex' ? 'none' : 'flex';
+            }
+        });
+    }
+    
+    // Sélectionner un avatar
+    document.querySelectorAll('#avatar-options img').forEach(img => {
+        img.addEventListener('click', (e) => {
+            const seed = e.target.getAttribute('data-seed');
+            const type = e.target.getAttribute('data-type') || 'avataaars';
+            
+            currentUser.avatar = seed;
+            currentUser.avatarType = type;
+            
+            // Mettre à jour l'avatar affiché
+            const currentAvatarImg = document.getElementById('current-avatar');
+            if (currentAvatarImg) {
+                let avatarUrl = `https://api.dicebear.com/7.x/${type}/svg?seed=${seed}`;
+                
+                if (type === 'bottts') {
+                    avatarUrl += '&backgroundColor=6b7280';
+                } else if (type === 'pixel-art') {
+                    avatarUrl += '&backgroundColor=3b82f6';
+                } else if (type === 'thumbs') {
+                    avatarUrl += '&backgroundColor=10b981';
+                } else {
+                    avatarUrl += '&backgroundColor=4f46e5';
+                }
+                
+                currentAvatarImg.src = avatarUrl;
+            }
+            
+            // Mettre à jour dans Firebase
+            if (db && currentRoom) {
+                const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
+                update(userRef, { 
+                    avatar: seed,
+                    avatarType: type 
+                }).catch(error => {
+                    console.error("Erreur mise à jour avatar:", error);
+                });
+                
+                const usersRef = ref(db, `users/${currentUser.id}`);
+                update(usersRef, { 
+                    avatar: seed,
+                    avatarType: type 
+                }).catch(error => {
+                    console.error("Erreur mise à jour avatar utilisateur:", error);
+                });
+            }
+        });
+    });
+    
+    // Modal pour créer un salon
+    const createRoomBtn = document.getElementById('create-room-btn');
+    if (createRoomBtn) {
+        createRoomBtn.addEventListener('click', () => {
+            const modal = document.getElementById('create-room-modal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+        });
+    }
+    
+    const closeModalBtn = document.querySelector('.close-modal');
+    if (closeModalBtn) {
+        closeModalBtn.addEventListener('click', closeCreateRoomModal);
+    }
+    
+    const confirmCreateRoomBtn = document.getElementById('confirm-create-room');
+    if (confirmCreateRoomBtn) {
+        confirmCreateRoomBtn.addEventListener('click', () => {
+            const roomNameInput = document.getElementById('room-name');
+            const roomDescInput = document.getElementById('room-description-input');
+            
+            if (roomNameInput && roomDescInput) {
+                const roomName = roomNameInput.value;
+                const roomDescription = roomDescInput.value;
+                createRoom(roomName, roomDescription);
+            }
+        });
+    }
+    
+    // Fermer le modal en cliquant à l'extérieur
+    window.addEventListener('click', (e) => {
+        const modal = document.getElementById('create-room-modal');
+        if (e.target === modal) {
+            closeCreateRoomModal();
+        }
+    });
+}
+
+function closeCreateRoomModal() {
+    const modal = document.getElementById('create-room-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    const roomNameInput = document.getElementById('room-name');
+    const roomDescInput = document.getElementById('room-description-input');
+    
+    if (roomNameInput) roomNameInput.value = '';
+    if (roomDescInput) roomDescInput.value = '';
+}
+
+// Gestion de la connexion/déconnexion
+window.addEventListener('beforeunload', () => {
+    if (db) {
+        // Quitter le salon actuel
+        if (currentRoom) {
+            const roomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
+            remove(roomRef).catch(error => {
+                console.error("Erreur nettoyage salon:", error);
+            });
+        }
+        
+        // Supprimer l'utilisateur de la liste des utilisateurs en ligne
+        const userRef = ref(db, `users/${currentUser.id}`);
+        remove(userRef).catch(error => {
+            console.error("Erreur nettoyage utilisateur:", error);
+        });
+        
+        // Supprimer l'indicateur de saisie
+        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
+        remove(typingRef).catch(error => {
+            console.error("Erreur nettoyage indicateur de saisie:", error);
+        });
+    }
+});
+
+// Initialiser Firebase quand la page est chargée
+document.addEventListener('DOMContentLoaded', () => {
+    initializeFirebaseApp();
+});
