@@ -1,4 +1,4 @@
-// Import des fonctions Firebase
+// Configuration Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
 import { 
     getDatabase, 
@@ -9,119 +9,87 @@ import {
     update, 
     remove,
     onChildAdded,
-    get
+    onChildRemoved
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
-import { firebaseConfig } from './firebase-config.js';
 
-// Variables globales
-let currentUser = {
-    id: null,
-    name: "Une personne",
-    avatar: "User",
-    avatarType: "avataaars",
-    isTyping: false,
-    lastTypingTime: 0
+const firebaseConfig = {
+    apiKey: "AIzaSyCb5Xkn-d2xiyQ8isQcan5v7L-i5RbxcBs",
+    authDomain: "chat-app-4865d.firebaseapp.com",
+    databaseURL: "https://chat-app-4865d-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "chat-app-4865d",
+    storageBucket: "chat-app-4865d.firebasestorage.app",
+    messagingSenderId: "251174960384",
+    appId: "1:251174960384:web:c1fa118f999f7eb02d47e5",
+    measurementId: "G-CQKD7W7TKE"
 };
 
-let currentRoom = "general";
-let rooms = {};
-let users = {};
+// Variables globales
 let db;
-let isInitialLoad = true;
-let lastMessageTime = 0;
-const MESSAGE_COOLDOWN = 1000; // 1 seconde entre les messages
-const MAX_MESSAGES_PER_ROOM = 100;
+let currentUser = {
+    id: null,
+    name: "",
+    currentRoom: "general"
+};
 
-// Initialiser Firebase
-function initializeFirebaseApp() {
+let rooms = {};
+let onlineUsers = new Map(); // Pour éviter les pseudos dupliqués
+let typingUsers = new Map();
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', () => {
     try {
         const app = initializeApp(firebaseConfig);
         db = getDatabase(app);
-        
-        console.log("Firebase initialisé avec succès!");
-        console.log("Database URL:", firebaseConfig.databaseURL);
-        
-        // Test de connexion simple
-        const testRef = ref(db, '.info/connected');
-        onValue(testRef, (snapshot) => {
-            if (snapshot.val() === true) {
-                console.log("✅ Connecté à Firebase Realtime Database");
-            } else {
-                console.log("❌ Non connecté à Firebase");
-            }
-        });
-        
-        // Générer un ID utilisateur unique
-        currentUser.id = generateUserId();
-        
-        // Initialiser l'application
-        initChatApp();
-        
+        console.log("Firebase initialisé avec succès");
+        initializeAppLogic();
     } catch (error) {
-        console.error("Erreur d'initialisation Firebase:", error);
-        alert("Erreur de connexion à la base de données: " + error.message);
+        console.error("Erreur Firebase:", error);
+        alert("Erreur de connexion au serveur. Vérifiez votre connexion Internet.");
     }
-}
+});
 
-// Initialiser l'application de chat
-function initChatApp() {
-    console.log("Application de chat initialisée");
-    
-    // Charger les données initiales
-    loadRooms();
-    loadUsers();
+function initializeAppLogic() {
     setupEventListeners();
+    loadInitialData();
+    updateOnlineCount();
 }
 
-// Générer un ID utilisateur unique
-function generateUserId() {
-    return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
+function setupEventListeners() {
+    // Écran de connexion
+    document.getElementById('join-chat-btn').addEventListener('click', joinChat);
+    document.getElementById('username').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') joinChat();
+    });
+    document.getElementById('create-room-btn').addEventListener('click', showCreateRoomModal);
 
-// Enregistrer l'utilisateur dans la liste des utilisateurs en ligne
-function registerUser() {
-    if (!db) return;
+    // Chat
+    document.getElementById('logout-btn').addEventListener('click', logout);
+    document.getElementById('create-new-room').addEventListener('click', showCreateRoomModal);
+    document.getElementById('send-btn').addEventListener('click', sendMessage);
+    document.getElementById('message-input').addEventListener('keypress', handleMessageInputKeypress);
+    document.getElementById('message-input').addEventListener('input', handleTyping);
+
+    // Modal
+    document.getElementById('confirm-create-room').addEventListener('click', createRoom);
+    document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', hideCreateRoomModal);
+    });
     
-    const userRef = ref(db, 'users/' + currentUser.id);
-    
-    const userData = {
-        id: currentUser.id,
-        name: currentUser.name,
-        avatar: currentUser.avatar,
-        avatarType: currentUser.avatarType,
-        lastActive: Date.now(),
-        isTyping: false,
-        currentRoom: currentRoom
-    };
-    
-    set(userRef, userData);
-    
-    // Mettre à jour périodiquement le timestamp d'activité
-    setInterval(() => {
-        if (db) {
-            update(userRef, { lastActive: Date.now() });
+    window.addEventListener('click', (e) => {
+        if (e.target.id === 'create-room-modal') {
+            hideCreateRoomModal();
         }
-    }, 30000);
+    });
 }
 
-// Charger les salons depuis Firebase
-function loadRooms() {
-    if (!db) return;
-    
+function loadInitialData() {
+    // Charger les salons existants
     const roomsRef = ref(db, 'rooms');
-    
     onValue(roomsRef, (snapshot) => {
-        const roomsData = snapshot.val();
-        
-        if (roomsData) {
-            rooms = roomsData;
-            updateRoomList();
-            
-            // Si c'est le premier chargement, rejoindre le salon général
-            if (isInitialLoad) {
-                isInitialLoad = false;
-                joinRoom("general");
-            }
+        const data = snapshot.val();
+        if (data) {
+            rooms = data;
+            updateRoomSelect();
         } else {
             // Créer le salon général par défaut
             rooms = {
@@ -129,332 +97,368 @@ function loadRooms() {
                     name: "Général",
                     description: "Salon de discussion général",
                     created: Date.now(),
-                    users: {}
+                    createdBy: "system"
                 }
             };
-            
-            set(roomsRef, rooms).then(() => {
-                updateRoomList();
-                if (isInitialLoad) {
-                    isInitialLoad = false;
-                    joinRoom("general");
-                }
-            }).catch(error => {
-                console.error("Erreur lors de la création du salon général:", error);
-            });
+            set(roomsRef, rooms);
         }
     });
 }
 
-// Charger les utilisateurs connectés
-function loadUsers() {
-    if (!db) return;
-    
+function updateOnlineCount() {
     const usersRef = ref(db, 'users');
-    
     onValue(usersRef, (snapshot) => {
-        const usersData = snapshot.val();
-        
-        if (usersData) {
-            users = usersData;
-            updateUserList();
-            
-            // Mettre à jour le compteur d'utilisateurs connectés
-            const onlineCount = Object.keys(users).length;
-            document.getElementById('user-count').textContent = onlineCount;
-        } else {
-            users = {};
-            document.getElementById('user-count').textContent = 0;
-        }
+        const users = snapshot.val() || {};
+        const count = Object.keys(users).length;
+        document.getElementById('online-count').textContent = count;
     });
 }
 
-// Mettre à jour la liste des salons dans l'interface
-function updateRoomList() {
-    const roomList = document.getElementById('room-list');
-    if (!roomList) return;
+function updateRoomSelect() {
+    const select = document.getElementById('room-select');
+    const currentValue = select.value;
     
-    roomList.innerHTML = '';
+    // Garder seulement l'option Général et vider le reste
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
     
-    for (const roomId in rooms) {
-        const room = rooms[roomId];
-        const userCount = room.users ? Object.keys(room.users).length : 0;
-        
-        const roomItem = document.createElement('div');
-        roomItem.className = `room-item ${roomId === currentRoom ? 'active' : ''}`;
-        roomItem.setAttribute('data-room', roomId);
-        roomItem.innerHTML = `
-            <i class="fas ${roomId === 'general' ? 'fa-globe' : 'fa-hashtag'}"></i>
-            <span>${room.name}</span>
-            <span class="room-counter">${userCount}</span>
-        `;
-        
-        roomItem.addEventListener('click', () => {
-            joinRoom(roomId);
-        });
-        
-        roomList.appendChild(roomItem);
+    // Ajouter les autres salons
+    Object.entries(rooms).forEach(([id, room]) => {
+        if (id !== 'general') {
+            const option = document.createElement('option');
+            option.value = id;
+            option.textContent = room.name;
+            select.appendChild(option);
+        }
+    });
+    
+    // Restaurer la sélection précédente si possible
+    if (rooms[currentValue]) {
+        select.value = currentValue;
     }
 }
 
-// Mettre à jour la liste des utilisateurs en ligne
-function updateUserList() {
-    const userList = document.getElementById('user-list');
-    if (!userList) return;
+// Gestion des utilisateurs
+async function joinChat() {
+    const usernameInput = document.getElementById('username');
+    const roomSelect = document.getElementById('room-select');
     
-    userList.innerHTML = '';
+    const username = usernameInput.value.trim();
+    const roomId = roomSelect.value;
     
-    for (const userId in users) {
-        const user = users[userId];
-        if (userId === currentUser.id) continue;
-        
-        const userItem = document.createElement('div');
-        userItem.className = 'user-item';
-        userItem.innerHTML = `
-            <img src="https://api.dicebear.com/7.x/${user.avatarType || 'avataaars'}/svg?seed=${user.avatar || 'User'}&backgroundColor=4f46e5" class="user-avatar" alt="${user.name}">
-            <div class="user-details">
-                <div class="user-name">${user.name || 'Utilisateur'}</div>
-                <div class="user-activity">${user.isTyping ? 'est en train d\'écrire...' : 'en ligne'}</div>
-            </div>
-        `;
-        
-        userList.appendChild(userItem);
-    }
-}
-
-// Rejoindre un salon
-function joinRoom(roomId) {
-    if (!db) {
-        console.error("Firebase Database n'est pas initialisé");
+    // Validation
+    if (!username) {
+        showError(usernameInput, "Veuillez entrer un pseudo");
         return;
     }
     
-    // Vérifier si le salon existe
-    if (!rooms[roomId]) {
-        console.warn(`Le salon ${roomId} n'existe pas`);
+    if (username.length < 3 || username.length > 20) {
+        showError(usernameInput, "Le pseudo doit contenir entre 3 et 20 caractères");
+        return;
+    }
+    
+    // Vérifier si le pseudo est déjà utilisé
+    const usersRef = ref(db, 'users');
+    const snapshot = await getSnapshotOnce(usersRef);
+    const users = snapshot.val() || {};
+    
+    const isUsernameTaken = Object.values(users).some(user => 
+        user.name.toLowerCase() === username.toLowerCase() && user.id !== currentUser.id
+    );
+    
+    if (isUsernameTaken) {
+        showError(usernameInput, "Ce pseudo est déjà utilisé. Veuillez en choisir un autre.");
+        return;
+    }
+    
+    // Créer l'utilisateur
+    currentUser = {
+        id: generateUserId(),
+        name: username,
+        currentRoom: roomId,
+        joinedAt: Date.now()
+    };
+    
+    // Enregistrer l'utilisateur dans Firebase
+    const userRef = ref(db, `users/${currentUser.id}`);
+    await set(userRef, {
+        id: currentUser.id,
+        name: currentUser.name,
+        currentRoom: currentUser.currentRoom,
+        lastActive: Date.now(),
+        isTyping: false
+    });
+    
+    // Mettre à jour périodiquement l'activité
+    setInterval(() => {
+        if (currentUser.id) {
+            update(userRef, { lastActive: Date.now() });
+        }
+    }, 30000);
+    
+    // Afficher l'interface de chat
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('chat-interface').style.display = 'block';
+    
+    // Mettre à jour l'interface
+    document.getElementById('current-username').textContent = currentUser.name;
+    
+    // Rejoindre le salon
+    joinRoom(roomId);
+    
+    // Écouter les changements d'utilisateurs
+    setupUsersListener();
+}
+
+function logout() {
+    if (currentUser.id && db) {
+        // Supprimer l'utilisateur de Firebase
+        const userRef = ref(db, `users/${currentUser.id}`);
+        remove(userRef);
         
-        // Si c'est le salon général, créer une structure temporaire
-        if (roomId === "general") {
-            rooms[roomId] = {
-                name: "Général",
-                description: "Salon de discussion général",
-                users: {}
-            };
-        } else {
-            return;
+        // Quitter le salon actuel
+        if (currentUser.currentRoom) {
+            const roomUserRef = ref(db, `rooms/${currentUser.currentRoom}/users/${currentUser.id}`);
+            remove(roomUserRef);
         }
     }
     
-    // Quitter le salon précédent
-    if (currentRoom && currentRoom !== roomId) {
-        const prevRoomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-        remove(prevRoomRef).catch(error => {
-            console.error("Erreur en quittant le salon précédent:", error);
+    // Réinitialiser
+    currentUser = { id: null, name: "", currentRoom: "general" };
+    onlineUsers.clear();
+    typingUsers.clear();
+    
+    // Retour à l'écran de connexion
+    document.getElementById('chat-interface').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('username').value = '';
+    document.getElementById('message-input').value = '';
+}
+
+function setupUsersListener() {
+    const usersRef = ref(db, 'users');
+    
+    onValue(usersRef, (snapshot) => {
+        const users = snapshot.val() || {};
+        onlineUsers.clear();
+        
+        // Mettre à jour la liste
+        const userList = document.getElementById('user-list');
+        userList.innerHTML = '';
+        
+        Object.values(users).forEach(user => {
+            if (user.id === currentUser.id) return;
+            
+            onlineUsers.set(user.id, user);
+            
+            const userElement = document.createElement('div');
+            userElement.className = 'user-item';
+            userElement.innerHTML = `
+                <span class="status online"></span>
+                <span>${user.name}</span>
+                ${user.currentRoom === currentUser.currentRoom ? 
+                    `<span class="typing-indicator-small">${user.isTyping ? 'écrit...' : ''}</span>` : 
+                    ''}
+            `;
+            userList.appendChild(userElement);
         });
+    });
+}
+
+// Gestion des salons
+function joinRoom(roomId) {
+    if (!currentUser.id || !db) return;
+    
+    const room = rooms[roomId];
+    if (!room) return;
+    
+    // Quitter le salon précédent
+    if (currentUser.currentRoom) {
+        const prevRoomRef = ref(db, `rooms/${currentUser.currentRoom}/users/${currentUser.id}`);
+        remove(prevRoomRef);
     }
     
     // Mettre à jour la salle courante
-    currentRoom = roomId;
-    const room = rooms[roomId];
+    currentUser.currentRoom = roomId;
+    
+    // Mettre à jour l'utilisateur
+    const userRef = ref(db, `users/${currentUser.id}`);
+    update(userRef, { currentRoom: roomId });
+    
+    // Rejoindre le nouveau salon
+    const roomUserRef = ref(db, `rooms/${roomId}/users/${currentUser.id}`);
+    set(roomUserRef, {
+        name: currentUser.name,
+        joined: Date.now()
+    });
     
     // Mettre à jour l'interface
-    const currentRoomElement = document.getElementById('current-room');
-    const roomDescriptionElement = document.getElementById('room-description');
-    
-    if (currentRoomElement) currentRoomElement.textContent = room.name;
-    if (roomDescriptionElement) roomDescriptionElement.textContent = room.description || "Salon de discussion";
+    document.getElementById('current-room-name').textContent = room.name;
+    document.getElementById('room-description').textContent = room.description || "Salon de discussion";
     
     // Mettre à jour la liste des salons
     updateRoomList();
     
-    // Enregistrer l'utilisateur s'il n'est pas encore enregistré
-    if (!users[currentUser.id]) {
-        registerUser();
-    }
-    
-    // Rejoindre le nouveau salon dans Firebase
-    const roomRef = ref(db, `rooms/${roomId}/users/${currentUser.id}`);
-    set(roomRef, {
-        name: currentUser.name,
-        avatar: currentUser.avatar,
-        avatarType: currentUser.avatarType,
-        joined: Date.now()
-    }).catch(error => {
-        console.error("Erreur en rejoignant le salon:", error);
-    });
-    
-    // Mettre à jour la salle courante de l'utilisateur
-    const userRef = ref(db, `users/${currentUser.id}`);
-    update(userRef, { 
-        currentRoom: roomId,
-        lastActive: Date.now()
-    }).catch(error => {
-        console.error("Erreur mise à jour utilisateur:", error);
-    });
-    
-    // Charger les messages du salon
+    // Charger les messages
     loadMessages(roomId);
     
     // Écouter les nouveaux messages
     listenToNewMessages(roomId);
     
     // Écouter les indicateurs de saisie
-    listenToTypingIndicator(roomId);
+    listenToTyping(roomId);
 }
 
-// Charger les messages d'un salon
-function loadMessages(roomId) {
-    if (!db) return;
+function updateRoomList() {
+    const roomList = document.getElementById('room-list');
+    roomList.innerHTML = '';
     
-    const messagesContainer = document.getElementById('messages-container');
-    if (!messagesContainer) return;
+    Object.entries(rooms).forEach(([id, room]) => {
+        const roomElement = document.createElement('div');
+        roomElement.className = `room-item ${id === currentUser.currentRoom ? 'active' : ''}`;
+        roomElement.setAttribute('data-room', id);
+        roomElement.innerHTML = `
+            <i class="fas ${id === 'general' ? 'fa-globe' : 'fa-hashtag'}"></i>
+            <span>${room.name}</span>
+            <span class="user-count" id="count-${id}">0</span>
+        `;
+        
+        roomElement.addEventListener('click', () => joinRoom(id));
+        roomList.appendChild(roomElement);
+        
+        // Écouter le nombre d'utilisateurs dans ce salon
+        const roomUsersRef = ref(db, `rooms/${id}/users`);
+        onValue(roomUsersRef, (snapshot) => {
+            const users = snapshot.val() || {};
+            const count = Object.keys(users).length;
+            document.getElementById(`count-${id}`).textContent = count;
+        });
+    });
+}
+
+function showCreateRoomModal() {
+    document.getElementById('create-room-modal').style.display = 'flex';
+    document.getElementById('new-room-name').focus();
+}
+
+function hideCreateRoomModal() {
+    document.getElementById('create-room-modal').style.display = 'none';
+    document.getElementById('new-room-name').value = '';
+    document.getElementById('new-room-description').value = '';
+}
+
+async function createRoom() {
+    const nameInput = document.getElementById('new-room-name');
+    const descInput = document.getElementById('new-room-description');
     
-    // Conserver uniquement le message de bienvenue
-    const welcomeMessage = messagesContainer.querySelector('.welcome-message');
-    messagesContainer.innerHTML = '';
-    if (welcomeMessage) {
-        messagesContainer.appendChild(welcomeMessage);
+    const name = nameInput.value.trim();
+    const description = descInput.value.trim();
+    
+    if (!name) {
+        showError(nameInput, "Veuillez donner un nom au salon");
+        return;
     }
+    
+    if (name.length > 30) {
+        showError(nameInput, "Le nom ne peut pas dépasser 30 caractères");
+        return;
+    }
+    
+    // Vérifier si le nom existe déjà
+    const roomExists = Object.values(rooms).some(room => 
+        room.name.toLowerCase() === name.toLowerCase()
+    );
+    
+    if (roomExists) {
+        showError(nameInput, "Un salon avec ce nom existe déjà");
+        return;
+    }
+    
+    // Créer le salon
+    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    const newRoom = {
+        name: name,
+        description: description,
+        created: Date.now(),
+        createdBy: currentUser.id
+    };
+    
+    // Ajouter à Firebase
+    const roomRef = ref(db, `rooms/${roomId}`);
+    await set(roomRef, newRoom);
+    
+    // Mettre à jour localement
+    rooms[roomId] = newRoom;
+    
+    // Rejoindre le nouveau salon
+    joinRoom(roomId);
+    
+    // Fermer le modal
+    hideCreateRoomModal();
+}
+
+// Gestion des messages
+function loadMessages(roomId) {
+    const messagesContainer = document.getElementById('messages-container');
+    messagesContainer.innerHTML = '';
     
     const messagesRef = ref(db, `messages/${roomId}`);
     
     onValue(messagesRef, (snapshot) => {
-        const messagesData = snapshot.val();
+        const messages = snapshot.val() || {};
         
-        if (messagesData) {
-            // Convertir l'objet en tableau et trier par timestamp
-            const messagesArray = Object.values(messagesData);
-            messagesArray.sort((a, b) => a.timestamp - b.timestamp);
-            
-            // Afficher seulement les 100 derniers messages
-            const recentMessages = messagesArray.slice(-MAX_MESSAGES_PER_ROOM);
-            
-            // Afficher chaque message
-            recentMessages.forEach(message => {
-                displayMessage(message);
-            });
-            
-            // Mettre à jour le compteur
-            updateMessageCounter(messagesArray.length);
-            
-            // Faire défiler vers le bas
-            scrollToBottom();
-        } else {
-            updateMessageCounter(0);
-        }
+        // Convertir en tableau et trier par timestamp
+        const messagesArray = Object.entries(messages)
+            .map(([id, msg]) => ({ id, ...msg }))
+            .sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Afficher les messages
+        messagesArray.forEach(msg => displayMessage(msg));
+        
+        // Faire défiler vers le bas
+        scrollToBottom();
     });
 }
 
-// Fonction pour mettre à jour le compteur de messages
-function updateMessageCounter(count) {
-    const counter = document.getElementById('message-counter');
-    if (counter) {
-        counter.textContent = `${count}/${MAX_MESSAGES_PER_ROOM} messages`;
-        
-        // Changer la couleur si proche de la limite
-        if (count > MAX_MESSAGES_PER_ROOM * 0.9) {
-            counter.style.color = 'var(--danger)';
-            counter.style.background = 'rgba(239, 68, 68, 0.1)';
-        } else if (count > MAX_MESSAGES_PER_ROOM * 0.7) {
-            counter.style.color = 'var(--warning)';
-            counter.style.background = 'rgba(245, 158, 11, 0.1)';
-        } else {
-            counter.style.color = 'var(--gray)';
-            counter.style.background = 'var(--light)';
-        }
-    }
-}
-
-// Écouter les nouveaux messages
 function listenToNewMessages(roomId) {
-    if (!db) return;
-    
     const messagesRef = ref(db, `messages/${roomId}`);
     
     onChildAdded(messagesRef, (snapshot) => {
-        const message = snapshot.val();
-        const messageId = snapshot.key;
+        const message = { id: snapshot.key, ...snapshot.val() };
         
-        // Vérifier si le message n'a pas déjà été affiché
-        const existingMessage = document.querySelector(`[data-message-id="${messageId}"]`);
-        
-        if (!existingMessage) {
-            displayMessage(message, messageId);
+        // Vérifier si le message n'est pas déjà affiché
+        if (!document.querySelector(`[data-message-id="${message.id}"]`)) {
+            displayMessage(message);
             scrollToBottom();
         }
     });
 }
 
-// Écouter les indicateurs de saisie
-function listenToTypingIndicator(roomId) {
-    if (!db) return;
-    
-    const typingRef = ref(db, `typing/${roomId}`);
-    
-    onValue(typingRef, (snapshot) => {
-        const typingData = snapshot.val();
-        const typingIndicator = document.getElementById('typing-indicator');
-        
-        if (!typingIndicator) return;
-        
-        if (typingData) {
-            // Filtrer les utilisateurs qui sont en train de taper (sauf soi-même)
-            const typingUsers = Object.values(typingData)
-                .filter(user => user.userId !== currentUser.id && user.isTyping)
-                .map(user => user.userName);
-            
-            if (typingUsers.length > 0) {
-                let text = '';
-                if (typingUsers.length === 1) {
-                    text = `${typingUsers[0]} est en train d'écrire...`;
-                } else if (typingUsers.length === 2) {
-                    text = `${typingUsers[0]} et ${typingUsers[1]} sont en train d'écrire...`;
-                } else {
-                    text = `${typingUsers[0]} et ${typingUsers.length - 1} autres sont en train d'écrire...`;
-                }
-                typingIndicator.textContent = text;
-            } else {
-                typingIndicator.textContent = '';
-            }
-        } else {
-            typingIndicator.textContent = '';
-        }
-    });
-}
-
-// Afficher un message
-function displayMessage(message, messageId = null) {
+function displayMessage(message) {
     const messagesContainer = document.getElementById('messages-container');
-    if (!messagesContainer) return;
-    
     const isOwnMessage = message.userId === currentUser.id;
+    
+    // Vérifier si c'est un message système
+    if (message.type === 'system') {
+        const systemMsg = document.createElement('div');
+        systemMsg.className = 'system-message';
+        systemMsg.innerHTML = `
+            <div class="message-text">${message.text}</div>
+        `;
+        messagesContainer.appendChild(systemMsg);
+        return;
+    }
     
     const messageElement = document.createElement('div');
     messageElement.className = `message ${isOwnMessage ? 'own' : ''}`;
-    if (messageId) {
-        messageElement.setAttribute('data-message-id', messageId);
-    }
+    messageElement.setAttribute('data-message-id', message.id);
     
     const time = new Date(message.timestamp);
     const timeString = time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     
-    // Déterminer l'URL de l'avatar selon le type
-    const avatarType = message.avatarType || 'avataaars';
-    let avatarUrl = `https://api.dicebear.com/7.x/${avatarType}/svg?seed=${message.avatar || 'User'}`;
-    
-    // Ajouter un fond coloré
-    if (avatarType === 'bottts') {
-        avatarUrl += '&backgroundColor=6b7280';
-    } else if (avatarType === 'pixel-art') {
-        avatarUrl += '&backgroundColor=3b82f6';
-    } else if (avatarType === 'thumbs') {
-        avatarUrl += '&backgroundColor=10b981';
-    } else {
-        avatarUrl += '&backgroundColor=4f46e5';
-    }
-    
     messageElement.innerHTML = `
-        <img src="${avatarUrl}" class="message-avatar" alt="${message.userName}">
         <div class="message-content">
             <div class="message-header">
                 <span class="message-sender">${message.userName}</span>
@@ -467,369 +471,155 @@ function displayMessage(message, messageId = null) {
     messagesContainer.appendChild(messageElement);
 }
 
-// Envoyer un message
-async function sendMessage() {
-    if (!db) {
-        alert("Base de données non connectée.");
-        return;
-    }
+function sendMessage() {
+    const input = document.getElementById('message-input');
+    const text = input.value.trim();
     
-    const messageInput = document.getElementById('message-input');
-    if (!messageInput) return;
-    
-    const text = messageInput.value.trim();
-    
-    if (text === '') return;
-    
-    // Prévenir l'envoi de messages trop rapides
-    const now = Date.now();
-    if (now - lastMessageTime < MESSAGE_COOLDOWN) {
-        console.log("Attendez avant d'envoyer un autre message");
-        return;
-    }
-    lastMessageTime = now;
+    if (!text || !currentUser.id || !db) return;
     
     const message = {
         userId: currentUser.id,
         userName: currentUser.name,
-        avatar: currentUser.avatar,
-        avatarType: currentUser.avatarType,
         text: text,
         timestamp: Date.now(),
-        roomId: currentRoom
+        roomId: currentUser.currentRoom
     };
     
-    try {
-        // Envoyer le message à Firebase
-        const messagesRef = ref(db, `messages/${currentRoom}`);
-        const newMessageRef = push(messagesRef);
-        await set(newMessageRef, message);
-        
-        // Limiter le nombre de messages
-        await limitMessages(currentRoom);
-        
-        // Réinitialiser le champ de saisie
-        messageInput.value = '';
-        
-        // Arrêter l'indicateur de saisie
-        stopTypingIndicator();
-        
-    } catch (error) {
-        console.error("Erreur en envoyant le message:", error);
-        alert("Erreur en envoyant le message: " + error.message);
+    // Envoyer à Firebase
+    const messagesRef = ref(db, `messages/${currentUser.currentRoom}`);
+    const newMessageRef = push(messagesRef);
+    set(newMessageRef, message);
+    
+    // Réinitialiser
+    input.value = '';
+    input.focus();
+    
+    // Arrêter l'indicateur de saisie
+    stopTyping();
+}
+
+function handleMessageInputKeypress(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
     }
 }
 
-// Fonction pour limiter les messages à 100 par salon
-async function limitMessages(roomId) {
-    if (!db) return;
+// Gestion de la saisie
+let typingTimeout;
+let isTyping = false;
+
+function handleTyping() {
+    if (!isTyping) {
+        isTyping = true;
+        startTyping();
+    }
     
-    try {
-        const messagesRef = ref(db, `messages/${roomId}`);
-        const snapshot = await get(messagesRef);
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        isTyping = false;
+        stopTyping();
+    }, 2000);
+}
+
+function startTyping() {
+    if (!currentUser.id || !db) return;
+    
+    const typingRef = ref(db, `typing/${currentUser.currentRoom}/${currentUser.id}`);
+    set(typingRef, {
+        userName: currentUser.name,
+        isTyping: true,
+        timestamp: Date.now()
+    });
+}
+
+function stopTyping() {
+    if (!currentUser.id || !db) return;
+    
+    const typingRef = ref(db, `typing/${currentUser.currentRoom}/${currentUser.id}`);
+    update(typingRef, {
+        isTyping: false,
+        timestamp: Date.now()
+    });
+}
+
+function listenToTyping(roomId) {
+    const typingRef = ref(db, `typing/${roomId}`);
+    
+    onValue(typingRef, (snapshot) => {
+        const typingData = snapshot.val() || {};
+        const indicator = document.getElementById('typing-indicator');
         
-        if (snapshot.exists()) {
-            const messages = snapshot.val();
-            const messageIds = Object.keys(messages);
-            
-            // Si plus de 100 messages, supprimer les plus anciens
-            if (messageIds.length > MAX_MESSAGES_PER_ROOM) {
-                // Trier les messages par timestamp
-                const sortedMessages = Object.entries(messages)
-                    .sort(([, a], [, b]) => a.timestamp - b.timestamp);
-                
-                // Garder seulement les 100 plus récents
-                const toKeep = sortedMessages.slice(-MAX_MESSAGES_PER_ROOM);
-                const toDelete = sortedMessages.slice(0, sortedMessages.length - MAX_MESSAGES_PER_ROOM);
-                
-                // Supprimer les anciens messages
-                for (const [messageId] of toDelete) {
-                    const messageRef = ref(db, `messages/${roomId}/${messageId}`);
-                    await remove(messageRef);
-                }
-                
-                console.log(`Supprimé ${toDelete.length} anciens messages`);
-            }
+        // Filtrer les utilisateurs qui tapent (sauf soi-même)
+        const typingUsersList = Object.values(typingData)
+            .filter(user => user.isTyping && user.userName !== currentUser.name)
+            .map(user => user.userName);
+        
+        if (typingUsersList.length === 0) {
+            indicator.textContent = '';
+        } else if (typingUsersList.length === 1) {
+            indicator.textContent = `${typingUsersList[0]} est en train d'écrire...`;
+        } else if (typingUsersList.length === 2) {
+            indicator.textContent = `${typingUsersList[0]} et ${typingUsersList[1]} sont en train d'écrire...`;
+        } else {
+            indicator.textContent = `${typingUsersList[0]} et ${typingUsersList.length - 1} autres sont en train d'écrire...`;
         }
-    } catch (error) {
-        console.error("Erreur limitation messages:", error);
-    }
+    });
 }
 
-// Gérer l'indicateur de saisie
-function startTypingIndicator() {
-    if (!db) return;
+// Utilitaires
+function generateUserId() {
+    return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function showError(inputElement, message) {
+    // Ajouter une classe d'erreur
+    inputElement.classList.add('error');
     
-    if (!currentUser.isTyping) {
-        currentUser.isTyping = true;
-        currentUser.lastTypingTime = Date.now();
-        
-        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
-        set(typingRef, {
-            userId: currentUser.id,
-            userName: currentUser.name,
-            isTyping: true,
-            timestamp: Date.now()
-        }).catch(error => {
-            console.error("Erreur indicateur de saisie:", error);
-        });
-    } else {
-        currentUser.lastTypingTime = Date.now();
-    }
+    // Afficher un message temporaire
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.textContent = message;
+    errorDiv.style.cssText = `
+        color: var(--danger-color);
+        font-size: 14px;
+        margin-top: 8px;
+        padding: 8px;
+        background-color: rgba(239, 68, 68, 0.1);
+        border-radius: var(--radius-sm);
+    `;
     
-    // Vérifier périodiquement si l'utilisateur a arrêté de taper
-    setTimeout(checkTyping, 1000);
-}
-
-function checkTyping() {
-    const timeSinceLastTyping = Date.now() - currentUser.lastTypingTime;
+    // Supprimer l'ancienne erreur
+    const oldError = inputElement.parentNode.querySelector('.error-message');
+    if (oldError) oldError.remove();
     
-    if (timeSinceLastTyping > 2000 && currentUser.isTyping) {
-        stopTypingIndicator();
-    }
+    inputElement.parentNode.appendChild(errorDiv);
+    
+    // Focus sur le champ
+    inputElement.focus();
+    
+    // Supprimer la classe d'erreur après 3 secondes
+    setTimeout(() => {
+        inputElement.classList.remove('error');
+        errorDiv.remove();
+    }, 3000);
 }
 
-function stopTypingIndicator() {
-    if (currentUser.isTyping) {
-        currentUser.isTyping = false;
-        
-        if (db) {
-            const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
-            update(typingRef, {
-                isTyping: false,
-                timestamp: Date.now()
-            }).catch(error => {
-                console.error("Erreur arrêt indicateur de saisie:", error);
-            });
-        }
-    }
-}
-
-// Faire défiler vers le bas de la conversation
 function scrollToBottom() {
-    const messagesContainer = document.getElementById('messages-container');
-    if (messagesContainer) {
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
+    const container = document.getElementById('messages-container');
+    container.scrollTop = container.scrollHeight;
 }
 
-// Créer un nouveau salon
-function createRoom(name, description) {
-    if (!db) {
-        alert("Base de données non connectée. Impossible de créer un salon.");
-        return;
-    }
-    
-    if (!name || name.trim() === '') {
-        alert('Veuillez donner un nom au salon');
-        return;
-    }
-    
-    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
-    const newRoom = {
-        name: name.trim(),
-        description: description || '',
-        created: Date.now(),
-        users: {}
-    };
-    
-    // Ajouter le salon à Firebase
-    const roomsRef = ref(db, 'rooms');
-    const roomRef = ref(db, `rooms/${roomId}`);
-    set(roomRef, newRoom).then(() => {
-        // Rejoindre le nouveau salon
-        joinRoom(roomId);
-        
-        // Fermer le modal
-        closeCreateRoomModal();
-    }).catch(error => {
-        console.error("Erreur création salon:", error);
-        alert("Erreur en créant le salon: " + error.message);
+// Fonction utilitaire pour obtenir une snapshot une fois
+function getSnapshotOnce(ref) {
+    return new Promise((resolve) => {
+        onValue(ref, (snapshot) => {
+            resolve(snapshot);
+        }, { onlyOnce: true });
     });
 }
 
-// Gestionnaires d'événements
-function setupEventListeners() {
-    // Envoyer un message
-    const sendBtn = document.getElementById('send-btn');
-    if (sendBtn) {
-        sendBtn.addEventListener('click', sendMessage);
-    }
-    
-    // Envoyer avec la touche Entrée
-    const messageInput = document.getElementById('message-input');
-    if (messageInput) {
-        messageInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-        
-        // Indicateur de saisie
-        messageInput.addEventListener('input', startTypingIndicator);
-    }
-    
-    // Changer de pseudo
-    const usernameInput = document.getElementById('username-input');
-    if (usernameInput) {
-        usernameInput.addEventListener('change', (e) => {
-            const newName = e.target.value.trim() || "Une personne";
-            currentUser.name = newName;
-            
-            // Mettre à jour dans Firebase
-            if (db && currentRoom) {
-                const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-                update(userRef, { name: newName }).catch(error => {
-                    console.error("Erreur mise à jour pseudo:", error);
-                });
-                
-                const usersRef = ref(db, `users/${currentUser.id}`);
-                update(usersRef, { name: newName }).catch(error => {
-                    console.error("Erreur mise à jour pseudo utilisateur:", error);
-                });
-            }
-        });
-    }
-    
-    // Changer d'avatar
-    const currentAvatar = document.getElementById('current-avatar');
-    if (currentAvatar) {
-        currentAvatar.addEventListener('click', () => {
-            const avatarOptions = document.getElementById('avatar-options');
-            if (avatarOptions) {
-                avatarOptions.style.display = avatarOptions.style.display === 'flex' ? 'none' : 'flex';
-            }
-        });
-    }
-    
-    // Sélectionner un avatar
-    document.querySelectorAll('#avatar-options img').forEach(img => {
-        img.addEventListener('click', (e) => {
-            const seed = e.target.getAttribute('data-seed');
-            const type = e.target.getAttribute('data-type') || 'avataaars';
-            
-            currentUser.avatar = seed;
-            currentUser.avatarType = type;
-            
-            // Mettre à jour l'avatar affiché
-            const currentAvatarImg = document.getElementById('current-avatar');
-            if (currentAvatarImg) {
-                let avatarUrl = `https://api.dicebear.com/7.x/${type}/svg?seed=${seed}`;
-                
-                if (type === 'bottts') {
-                    avatarUrl += '&backgroundColor=6b7280';
-                } else if (type === 'pixel-art') {
-                    avatarUrl += '&backgroundColor=3b82f6';
-                } else if (type === 'thumbs') {
-                    avatarUrl += '&backgroundColor=10b981';
-                } else {
-                    avatarUrl += '&backgroundColor=4f46e5';
-                }
-                
-                currentAvatarImg.src = avatarUrl;
-            }
-            
-            // Mettre à jour dans Firebase
-            if (db && currentRoom) {
-                const userRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-                update(userRef, { 
-                    avatar: seed,
-                    avatarType: type 
-                }).catch(error => {
-                    console.error("Erreur mise à jour avatar:", error);
-                });
-                
-                const usersRef = ref(db, `users/${currentUser.id}`);
-                update(usersRef, { 
-                    avatar: seed,
-                    avatarType: type 
-                }).catch(error => {
-                    console.error("Erreur mise à jour avatar utilisateur:", error);
-                });
-            }
-        });
-    });
-    
-    // Modal pour créer un salon
-    const createRoomBtn = document.getElementById('create-room-btn');
-    if (createRoomBtn) {
-        createRoomBtn.addEventListener('click', () => {
-            const modal = document.getElementById('create-room-modal');
-            if (modal) {
-                modal.style.display = 'flex';
-            }
-        });
-    }
-    
-    const closeModalBtn = document.querySelector('.close-modal');
-    if (closeModalBtn) {
-        closeModalBtn.addEventListener('click', closeCreateRoomModal);
-    }
-    
-    const confirmCreateRoomBtn = document.getElementById('confirm-create-room');
-    if (confirmCreateRoomBtn) {
-        confirmCreateRoomBtn.addEventListener('click', () => {
-            const roomNameInput = document.getElementById('room-name');
-            const roomDescInput = document.getElementById('room-description-input');
-            
-            if (roomNameInput && roomDescInput) {
-                const roomName = roomNameInput.value;
-                const roomDescription = roomDescInput.value;
-                createRoom(roomName, roomDescription);
-            }
-        });
-    }
-    
-    // Fermer le modal en cliquant à l'extérieur
-    window.addEventListener('click', (e) => {
-        const modal = document.getElementById('create-room-modal');
-        if (e.target === modal) {
-            closeCreateRoomModal();
-        }
-    });
-}
-
-function closeCreateRoomModal() {
-    const modal = document.getElementById('create-room-modal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-    
-    const roomNameInput = document.getElementById('room-name');
-    const roomDescInput = document.getElementById('room-description-input');
-    
-    if (roomNameInput) roomNameInput.value = '';
-    if (roomDescInput) roomDescInput.value = '';
-}
-
-// Gestion de la connexion/déconnexion
+// Gestion de la fermeture de la page
 window.addEventListener('beforeunload', () => {
-    if (db) {
-        // Quitter le salon actuel
-        if (currentRoom) {
-            const roomRef = ref(db, `rooms/${currentRoom}/users/${currentUser.id}`);
-            remove(roomRef).catch(error => {
-                console.error("Erreur nettoyage salon:", error);
-            });
-        }
-        
-        // Supprimer l'utilisateur de la liste des utilisateurs en ligne
-        const userRef = ref(db, `users/${currentUser.id}`);
-        remove(userRef).catch(error => {
-            console.error("Erreur nettoyage utilisateur:", error);
-        });
-        
-        // Supprimer l'indicateur de saisie
-        const typingRef = ref(db, `typing/${currentRoom}/${currentUser.id}`);
-        remove(typingRef).catch(error => {
-            console.error("Erreur nettoyage indicateur de saisie:", error);
-        });
-    }
-});
-
-// Initialiser Firebase quand la page est chargée
-document.addEventListener('DOMContentLoaded', () => {
-    initializeFirebaseApp();
+    logout();
 });
