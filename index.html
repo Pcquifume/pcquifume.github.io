@@ -3,150 +3,586 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Chat App - Discussion en Temps Réel</title>
+    <!-- Chargement de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Configuration de la police Inter */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        /* Style personnalisé pour la barre de défilement */
+        .chat-messages {
+            scrollbar-width: thin;
+            scrollbar-color: #a0aec0 #edf2f7;
+        }
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+            background-color: #a0aec0;
+            border-radius: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+            background-color: #edf2f7;
+        }
+        /* Style pour les messages */
+        .message-bubble-self {
+            background-color: #4f46e5; /* Indigo */
+            color: white;
+            border-radius: 1rem 1rem 0 1rem;
+        }
+        .message-bubble-other {
+            background-color: #e5e7eb; /* Gray 200 */
+            color: #1f2937; /* Gray 800 */
+            border-radius: 1rem 1rem 1rem 0;
+        }
+    </style>
 </head>
-<body>
-    <!-- Écran de connexion simplifié -->
-    <div id="login-screen" class="login-screen">
-        <div class="login-container">
-            <div class="login-header">
-                <i class="fas fa-comments"></i>
-                <h1>Chat</h1>
-                <p>Rejoignez la conversation</p>
-            </div>
-            
-            <div class="login-form">
-                <div class="form-group">
-                    <input type="text" 
-                           id="username" 
-                           placeholder="Votre pseudo (3-20 caractères)" 
-                           required
-                           maxlength="20">
-                </div>
-                
-                <div class="login-info">
-                    <p><i class="fas fa-users"></i> <span id="online-count">0</span> personnes en ligne</p>
-                </div>
-                
-                <button id="join-chat-btn" class="btn-primary">
-                    <i class="fas fa-sign-in-alt"></i> Rejoindre le chat
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <!-- Écran de Connexion (Initial) -->
+    <div id="nickname-screen" class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md transition-all duration-500 hidden">
+        <h1 class="text-3xl font-bold text-center text-indigo-700 mb-6">Bienvenue sur le Chat</h1>
+        <p class="text-gray-600 mb-6 text-center">Veuillez choisir un pseudonyme pour entrer dans la discussion.</p>
+        <input type="text" id="nickname-input" placeholder="Votre Pseudo"
+               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-lg mb-4">
+        <button id="join-chat-button"
+                class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700 transition duration-300 shadow-md">
+            Entrer dans le Chat
+        </button>
+        <p id="error-message" class="text-red-500 text-sm mt-3 text-center hidden"></p>
+    </div>
+
+    <!-- Interface du Chat (Principal) -->
+    <div id="chat-interface" class="w-full h-[90vh] max-w-6xl bg-white rounded-xl shadow-2xl flex overflow-hidden hidden">
+        
+        <!-- Sidebar des Salons et Utilisateurs -->
+        <aside class="w-64 bg-gray-50 border-r border-gray-200 flex flex-col p-4">
+            <h2 class="text-2xl font-bold text-indigo-700 mb-6">Salons</h2>
+            <nav class="space-y-2 mb-8">
+                <button data-channel="general" class="channel-button w-full text-left p-3 rounded-lg font-medium bg-indigo-100 text-indigo-800 transition duration-200 hover:bg-indigo-200">
+                    # Général
                 </button>
-            </div>
-            
-            <div class="login-footer">
-                <p>Tous les messages sont publics • Soyez respectueux</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Interface principale du chat (cachée au début) -->
-    <div id="chat-interface" class="chat-interface" style="display: none;">
-        <div class="container">
-            <!-- Sidebar -->
-            <div class="sidebar">
-                <div class="sidebar-header">
-                    <h2><i class="fas fa-comments"></i> Chat</h2>
-                    <div class="user-info">
-                        <span class="username-display" id="current-username"></span>
-                        <span class="status online"></span>
-                    </div>
-                </div>
-                
-                <div class="rooms-section">
-                    <h3><i class="fas fa-hashtag"></i> Salons</h3>
-                    <div class="room-list" id="room-list">
-                        <div class="room-item active" data-room="general">
-                            <i class="fas fa-globe"></i>
-                            <span>Général</span>
-                            <span class="user-count">0</span>
-                        </div>
-                    </div>
-                    <button id="create-new-room" class="btn-text">
-                        <i class="fas fa-plus-circle"></i> Créer un salon
-                    </button>
-                </div>
-                
-                <div class="online-users-section">
-                    <h3><i class="fas fa-users"></i> En ligne</h3>
-                    <div class="user-list" id="user-list">
-                        <!-- Liste des utilisateurs -->
-                    </div>
-                </div>
-                
-                <button id="logout-btn" class="btn-logout">
-                    <i class="fas fa-sign-out-alt"></i> Quitter
+                <button data-channel="general_2" class="channel-button w-full text-left p-3 rounded-lg font-medium text-gray-700 transition duration-200 hover:bg-gray-200">
+                    # Général 2
                 </button>
+            </nav>
+
+            <div class="mt-auto">
+                <h3 class="text-lg font-semibold text-gray-700 mb-2 border-t pt-4 border-gray-200">
+                    Utilisateurs Connectés (<span id="user-count">0</span>)
+                </h3>
+                <ul id="user-list" class="space-y-1 text-sm text-gray-600">
+                    <!-- Les utilisateurs connectés seront insérés ici -->
+                </ul>
             </div>
+        </aside>
+
+        <!-- Zone de Discussion Principale -->
+        <main class="flex-1 flex flex-col">
+            <header class="p-4 border-b border-gray-200 bg-white shadow-sm">
+                <h1 class="text-xl font-semibold text-gray-800">
+                    Salon actuel: <span id="current-channel-name" class="text-indigo-600"># Général</span>
+                </h1>
+            </header>
+
+            <!-- Conteneur des Messages -->
+            <div id="message-container" class="flex-1 overflow-y-auto p-6 space-y-4 chat-messages">
+                <!-- Les messages seront insérés ici -->
+            </div>
+
+            <!-- Indicateur de Frappe -->
+            <div id="typing-indicator" class="p-2 text-sm text-gray-500 bg-gray-50 border-t border-gray-200 transition-opacity duration-300 opacity-0 h-8 flex items-center">
+                <!-- "Machin est en train d'écrire..." sera inséré ici -->
+            </div>
+
+            <!-- Formulaire d'Envoi de Message -->
+            <form id="message-form" class="p-4 border-t border-gray-200 bg-white flex space-x-3">
+                <input type="text" id="message-input" placeholder="Écrivez votre message..."
+                       class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+                       autocomplete="off">
+                <button type="submit"
+                        class="bg-indigo-600 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-700 transition duration-300 shadow-md flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </form>
+        </main>
+    </div>
+
+    <!-- Scripts Firebase et Logique du Chat -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, onSnapshot, collection, query, where, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuration et Variables Globales ---
+        
+        // Les variables globales sont fournies par l'environnement Canvas
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let userId = null;
+        let currentNickname = '';
+        let currentChannel = 'general';
+        let presenceRef = null; // Référence au document de présence de l'utilisateur actuel
+        let typingTimeout;
+        const CHANNELS = {
+            general: "Général",
+            general_2: "Général 2"
+        };
+        
+        // Mettre en place le niveau de log pour le débogage de Firestore
+        setLogLevel('Debug');
+
+        // --- Références DOM ---
+        const nicknameScreen = document.getElementById('nickname-screen');
+        const chatInterface = document.getElementById('chat-interface');
+        const nicknameInput = document.getElementById('nickname-input');
+        const joinChatButton = document.getElementById('join-chat-button');
+        const errorMessage = document.getElementById('error-message');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const messageContainer = document.getElementById('message-container');
+        const userCountSpan = document.getElementById('user-count');
+        const userListUl = document.getElementById('user-list');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const currentChannelNameSpan = document.getElementById('current-channel-name');
+        const channelButtons = document.querySelectorAll('.channel-button');
+
+        // --- Fonctions Utilitaires ---
+
+        /**
+         * Construit le chemin de la collection pour un salon donné.
+         * @param {string} channelId L'ID du salon (e.g., 'general').
+         * @returns {string} Le chemin complet de la collection.
+         */
+        const getChannelPath = (channelId) => {
+            return `artifacts/${appId}/public/data/chat_messages_${channelId}`;
+        };
+
+        /**
+         * Construit le chemin de la collection pour la présence des utilisateurs.
+         * @returns {string} Le chemin complet de la collection.
+         */
+        const getPresencePath = () => {
+            return `artifacts/${appId}/public/data/chat_presence`;
+        };
+
+        /**
+         * Fait défiler le conteneur de messages vers le bas.
+         */
+        const scrollToBottom = () => {
+            messageContainer.scrollTop = messageContainer.scrollHeight;
+        };
+
+        // --- Initialisation Firebase et Authentification ---
+
+        /**
+         * Initialise Firebase et authentifie l'utilisateur.
+         */
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("La configuration Firebase n'est pas disponible.");
+                }
+
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Gérer l'authentification
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        // On attend que le pseudo soit défini pour continuer
+                        showNicknameScreen();
+                    } else {
+                        // Devrait être géré par signInAnonymously ou signInWithCustomToken
+                        console.error("Échec de l'authentification.");
+                    }
+                });
+
+            } catch (error) {
+                console.error("Erreur lors de l'initialisation de Firebase ou de l'authentification:", error);
+                nicknameScreen.classList.remove('hidden');
+                chatInterface.classList.add('hidden');
+                errorMessage.textContent = "Erreur de connexion : " + error.message;
+                errorMessage.classList.remove('hidden');
+            }
+        }
+
+        // --- Logique de l'Écran de Pseudo ---
+
+        function showNicknameScreen() {
+            // Afficher l'écran de pseudo si le chat n'est pas déjà visible
+            if (chatInterface.classList.contains('hidden')) {
+                nicknameScreen.classList.remove('hidden');
+                nicknameScreen.style.display = 'block';
+            }
+        }
+
+        joinChatButton.addEventListener('click', () => {
+            const nickname = nicknameInput.value.trim();
+            if (nickname.length < 3 || nickname.length > 20) {
+                errorMessage.textContent = "Le pseudo doit contenir entre 3 et 20 caractères.";
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+            errorMessage.classList.add('hidden');
+            currentNickname = nickname;
             
-            <!-- Zone de chat principale -->
-            <div class="main-chat">
-                <div class="chat-header">
-                    <div class="room-info">
-                        <h2 id="current-room-name">Général</h2>
-                        <p id="room-description">Salon de discussion général</p>
-                    </div>
-                    <div class="typing-indicator" id="typing-indicator"></div>
-                </div>
-                
-                <div class="messages-container" id="messages-container">
-                    <!-- Messages seront ajoutés ici -->
-                </div>
-                
-                <div class="message-input-area">
-                    <div class="input-wrapper">
-                        <input type="text" 
-                               id="message-input" 
-                               placeholder="Écrivez votre message..." 
-                               autocomplete="off"
-                               maxlength="500">
-                        <button id="send-btn" class="btn-send">
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </div>
-                    <div class="input-hint">
-                        <span>Appuyez sur Entrée pour envoyer</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+            // Masquer l'écran de pseudo et afficher l'interface du chat
+            nicknameScreen.classList.add('hidden');
+            nicknameScreen.style.display = 'none';
+            chatInterface.classList.remove('hidden');
+            
+            // Démarrer la surveillance de la présence et du chat
+            setupUserPresence();
+            startChatListeners();
+        });
 
-    <!-- Modal pour créer un salon -->
-    <div id="create-room-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-plus-circle"></i> Créer un salon</h3>
-                <button class="close-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="new-room-name">Nom du salon</label>
-                    <input type="text" 
-                           id="new-room-name" 
-                           placeholder="Ex: Développement" 
-                           maxlength="30">
-                    <div class="char-count">30 caractères maximum</div>
-                </div>
-                <div class="form-group">
-                    <label for="new-room-description">Description (optionnel)</label>
-                    <textarea id="new-room-description" 
-                              placeholder="Décrivez le sujet du salon..."
-                              rows="3"
-                              maxlength="100"></textarea>
-                    <div class="char-count">100 caractères maximum</div>
-                </div>
-                <div class="modal-actions">
-                    <button id="confirm-create-room" class="btn-primary">Créer</button>
-                    <button class="btn-secondary close-modal">Annuler</button>
-                </div>
-            </div>
-        </div>
-    </div>
+        // --- Gestion de la Présence (Utilisateurs Connectés) ---
 
-    <script type="module" src="app.js?v=2"></script>
+        /**
+         * Met en place la surveillance de la présence et démarre le heartbeat.
+         */
+        function setupUserPresence() {
+            if (!userId || !currentNickname) return;
+
+            const presenceCollection = collection(db, getPresencePath());
+            presenceRef = doc(presenceCollection, userId);
+
+            // 1. Enregistrer la présence initiale et la mettre à jour régulièrement (heartbeat)
+            const updatePresence = async () => {
+                const presenceData = {
+                    userId: userId,
+                    nickname: currentNickname,
+                    lastSeen: serverTimestamp(),
+                    isTyping: false,
+                    channel: currentChannel,
+                };
+                try {
+                    // Utiliser setDoc avec merge: true pour créer ou mettre à jour
+                    await setDoc(presenceRef, presenceData, { merge: true });
+                } catch (e) {
+                    console.error("Erreur lors de la mise à jour de la présence:", e);
+                }
+            };
+
+            // Mettre à jour immédiatement et toutes les 30 secondes (heartbeat)
+            updatePresence();
+            setInterval(updatePresence, 30000); // 30 secondes
+
+            // 2. Écouter les changements de présence (nombre et liste d'utilisateurs)
+            onSnapshot(query(presenceCollection), (snapshot) => {
+                const now = Date.now();
+                const activeUsers = [];
+                let typingUsers = [];
+
+                snapshot.docs.forEach(docSnapshot => {
+                    const data = docSnapshot.data();
+                    // Considérer l'utilisateur comme actif s'il a mis à jour sa présence
+                    // dans les 45 secondes (30s heartbeat + marge)
+                    const isRecent = data.lastSeen && (now - data.lastSeen.toDate().getTime() < 45000);
+                    
+                    if (isRecent) {
+                        activeUsers.push(data);
+                        if (data.isTyping && data.userId !== userId && data.channel === currentChannel) {
+                            typingUsers.push(data.nickname);
+                        }
+                    }
+                });
+
+                updateUserList(activeUsers);
+                updateTypingIndicator(typingUsers);
+            });
+        }
+
+        /**
+         * Met à jour la liste des utilisateurs et le compteur.
+         * @param {Array<Object>} users Liste des utilisateurs actifs.
+         */
+        function updateUserList(users) {
+            userCountSpan.textContent = users.length;
+            userListUl.innerHTML = '';
+            
+            users.sort((a, b) => a.nickname.localeCompare(b.nickname));
+
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center space-x-2';
+                li.innerHTML = `
+                    <span class="h-2 w-2 rounded-full bg-green-500"></span>
+                    <span>${user.nickname}</span>
+                `;
+                userListUl.appendChild(li);
+            });
+        }
+
+        /**
+         * Met à jour l'indicateur de frappe.
+         * @param {Array<string>} nicknames Liste des pseudos qui sont en train d'écrire.
+         */
+        function updateTypingIndicator(nicknames) {
+            if (nicknames.length > 0) {
+                let text;
+                if (nicknames.length === 1) {
+                    text = `${nicknames[0]} est en train d'écrire...`;
+                } else if (nicknames.length === 2) {
+                    text = `${nicknames.join(' et ')} sont en train d'écrire...`;
+                } else {
+                    text = `Plusieurs personnes sont en train d'écrire...`;
+                }
+                typingIndicator.innerHTML = `<div class="flex items-center space-x-2"><div class="dot-flashing"></div><span>${text}</span></div>`;
+                typingIndicator.classList.remove('opacity-0');
+            } else {
+                typingIndicator.classList.add('opacity-0');
+            }
+        }
+
+        // Ajout d'un style pour l'animation des points de frappe
+        const style = document.createElement('style');
+        style.textContent = `
+            .dot-flashing {
+                position: relative;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background-color: #9ca3af; /* gray-400 */
+                color: #9ca3af;
+                animation: dotFlashing 1s infinite linear alternate;
+                animation-delay: 0.5s;
+            }
+            .dot-flashing::before, .dot-flashing::after {
+                content: "";
+                display: inline-block;
+                position: absolute;
+                top: 0;
+            }
+            .dot-flashing::before {
+                left: -8px;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background-color: #9ca3af;
+                color: #9ca3af;
+                animation: dotFlashing 1s infinite alternate;
+                animation-delay: 0s;
+            }
+            .dot-flashing::after {
+                left: 8px;
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background-color: #9ca3af;
+                color: #9ca3af;
+                animation: dotFlashing 1s infinite alternate;
+                animation-delay: 1s;
+            }
+            @keyframes dotFlashing {
+                0% { background-color: #9ca3af; }
+                50%, 100% { background-color: #d1d5db; /* gray-300 */ }
+            }
+        `;
+        document.head.appendChild(style);
+
+
+        // --- Gestion de l'Indicateur de Frappe de l'Utilisateur Actuel ---
+
+        /**
+         * Déclenche la mise à jour du statut de frappe dans Firestore.
+         * @param {boolean} isTyping true pour commencer, false pour arrêter.
+         */
+        async function setTypingStatus(isTyping) {
+            if (presenceRef && auth.currentUser) {
+                try {
+                    await updateDoc(presenceRef, { 
+                        isTyping: isTyping,
+                        // Mettre à jour le canal de présence pour que les autres sachent où vous êtes
+                        channel: currentChannel 
+                    });
+                } catch (e) {
+                    console.error("Erreur mise à jour isTyping:", e);
+                }
+            }
+        }
+
+        messageInput.addEventListener('input', () => {
+            const isInputEmpty = messageInput.value.trim() === '';
+
+            // Si l'utilisateur tape, définir isTyping à true
+            if (!isInputEmpty) {
+                setTypingStatus(true);
+            }
+
+            // Réinitialiser le timeout
+            clearTimeout(typingTimeout);
+
+            // Définir un nouveau timeout pour définir isTyping à false après 3 secondes d'inactivité
+            typingTimeout = setTimeout(() => {
+                setTypingStatus(false);
+            }, 3000);
+        });
+
+        // Lorsque l'utilisateur envoie le message, on s'assure de désactiver l'indicateur
+        messageForm.addEventListener('submit', () => {
+            setTypingStatus(false);
+            clearTimeout(typingTimeout);
+        });
+
+
+        // --- Logique du Chat (Messages) ---
+
+        let unsubscribeMessages = null;
+
+        /**
+         * Démarre les écouteurs pour les messages du salon actuel.
+         */
+        function startChatListeners() {
+            if (unsubscribeMessages) {
+                unsubscribeMessages(); // Arrêter l'écouteur précédent si il existe
+            }
+            messageContainer.innerHTML = ''; // Vider les anciens messages
+
+            const messagesCollection = collection(db, getChannelPath(currentChannel));
+            const messagesQuery = query(messagesCollection);
+
+            // Écouteur en temps réel des messages
+            unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+                const changes = snapshot.docChanges();
+                let shouldScroll = messageContainer.scrollHeight - messageContainer.scrollTop - messageContainer.clientHeight < 50;
+
+                changes.forEach((change) => {
+                    if (change.type === "added") {
+                        const messageData = change.doc.data();
+                        displayMessage(messageData);
+                    }
+                });
+
+                if (shouldScroll) {
+                    setTimeout(scrollToBottom, 100);
+                }
+            }, (error) => {
+                console.error("Erreur lors de l'écoute des messages:", error);
+            });
+            
+            // Mettre à jour l'affichage du nom du salon
+            currentChannelNameSpan.textContent = `# ${CHANNELS[currentChannel]}`;
+        }
+
+        /**
+         * Affiche un message dans le conteneur.
+         * @param {Object} message Message data.
+         */
+        function displayMessage(message) {
+            const isOwnMessage = message.userId === userId;
+            
+            // Formatage de l'heure
+            const timestamp = message.timestamp ? (message.timestamp.toDate ? message.timestamp.toDate() : new Date()) : new Date();
+            const timeString = timestamp.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
+
+            const bubbleClass = isOwnMessage ? 'message-bubble-self' : 'message-bubble-other';
+            const nicknameColor = isOwnMessage ? 'text-indigo-400' : 'text-gray-600';
+
+            messageDiv.innerHTML = `
+                <div class="max-w-xs md:max-w-md lg:max-w-lg">
+                    <div class="text-xs mb-0.5 ${isOwnMessage ? 'text-right pr-4' : 'text-left pl-4'}">
+                        <span class="font-semibold ${nicknameColor}">${message.nickname || 'Anonyme'}</span>
+                    </div>
+                    <div class="p-3 shadow-md ${bubbleClass}">
+                        <p class="whitespace-pre-wrap">${message.text}</p>
+                    </div>
+                    <div class="text-xs mt-0.5 ${isOwnMessage ? 'text-right' : 'text-left'} text-gray-400">
+                        ${timeString}
+                    </div>
+                </div>
+            `;
+            messageContainer.appendChild(messageDiv);
+        }
+
+        // Événement d'envoi de message
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = messageInput.value.trim();
+
+            if (!text || !userId || !currentNickname) {
+                return;
+            }
+
+            const message = {
+                userId: userId,
+                nickname: currentNickname,
+                text: text,
+                timestamp: serverTimestamp(), // Utiliser serverTimestamp pour l'ordre
+                channel: currentChannel,
+            };
+
+            try {
+                const channelCollection = collection(db, getChannelPath(currentChannel));
+                await addDoc(channelCollection, message);
+                messageInput.value = ''; // Vider l'input
+                scrollToBottom();
+            } catch (error) {
+                console.error("Erreur lors de l'envoi du message:", error);
+            }
+        });
+
+        // --- Gestion du Changement de Salon ---
+
+        channelButtons.forEach(button => {
+            button.addEventListener('click', async () => {
+                const newChannel = button.getAttribute('data-channel');
+                if (newChannel === currentChannel) return;
+
+                // Mise à jour de l'état local du canal
+                currentChannel = newChannel;
+
+                // Mise à jour de l'interface utilisateur
+                channelButtons.forEach(btn => {
+                    btn.classList.remove('bg-indigo-100', 'text-indigo-800');
+                    btn.classList.add('text-gray-700', 'hover:bg-gray-200');
+                });
+                button.classList.add('bg-indigo-100', 'text-indigo-800');
+                button.classList.remove('text-gray-700', 'hover:bg-gray-200');
+
+                // Mettre à jour le canal de l'utilisateur dans la présence
+                if (presenceRef) {
+                    try {
+                        await updateDoc(presenceRef, { channel: currentChannel });
+                    } catch (e) {
+                         console.error("Erreur mise à jour canal de présence:", e);
+                    }
+                }
+
+                // Redémarrer l'écouteur de messages pour le nouveau canal
+                startChatListeners();
+            });
+        });
+        
+        // --- Démarrage de l'Application ---
+        
+        // Afficher l'écran de pseudo par défaut, il sera masqué par le script d'initialisation
+        nicknameScreen.classList.remove('hidden');
+        nicknameScreen.style.display = 'block';
+
+        initializeFirebase();
+
+    </script>
 </body>
 </html>
-
