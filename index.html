@@ -3,133 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatRoom Pro</title>
+    <title>Chat</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <!-- Sidebar des salons -->
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2><i class="fas fa-comments"></i> ChatRoom Pro</h2>
-                <button id="create-room-btn" class="btn-create">
-                    <i class="fas fa-plus"></i> Nouveau Salon
+    <!-- Écran de connexion -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-comments"></i>
+                <h1>Chat </h1>
+                <p>Rejoignez la conversation en toute simplicité</p>
+            </div>
+            
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="username">Votre pseudo</label>
+                    <input type="text" id="username" placeholder="Entrez votre pseudo" required>
+                    <div class="requirements">
+                        <p><i class="fas fa-info-circle"></i> Le pseudo doit être unique et contenir 3-20 caractères</p>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="room-select">Rejoindre un salon</label>
+                    <select id="room-select">
+                        <option value="general">Général</option>
+                        <!-- Les autres salons seront ajoutés dynamiquement -->
+                    </select>
+                </div>
+                
+                <div class="form-actions">
+                    <button id="join-chat-btn" class="btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> Rejoindre le chat
+                    </button>
+                    <button id="create-room-btn" class="btn-secondary">
+                        <i class="fas fa-plus"></i> Créer un salon
+                    </button>
+                </div>
+            </div>
+            
+            <div class="login-footer">
+                <p><i class="fas fa-users"></i> <span id="online-count">0</span> personnes en ligne</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interface principale du chat (cachée au début) -->
+    <div id="chat-interface" class="chat-interface" style="display: none;">
+        <div class="container">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2><i class="fas fa-comments"></i> Chat</h2>
+                    <div class="user-info">
+                        <span class="username-display" id="current-username"></span>
+                        <span class="status online"></span>
+                    </div>
+                </div>
+                
+                <div class="rooms-section">
+                    <h3><i class="fas fa-hashtag"></i> Salons</h3>
+                    <div class="room-list" id="room-list">
+                        <div class="room-item active" data-room="general">
+                            <i class="fas fa-globe"></i>
+                            <span>Général</span>
+                            <span class="user-count">0</span>
+                        </div>
+                    </div>
+                    <button id="create-new-room" class="btn-text">
+                        <i class="fas fa-plus-circle"></i> Créer un salon
+                    </button>
+                </div>
+                
+                <div class="online-users-section">
+                    <h3><i class="fas fa-users"></i> En ligne</h3>
+                    <div class="user-list" id="user-list">
+                        <!-- Liste des utilisateurs -->
+                    </div>
+                </div>
+                
+                <button id="logout-btn" class="btn-logout">
+                    <i class="fas fa-sign-out-alt"></i> Quitter
                 </button>
             </div>
             
-            <div class="user-profile">
-                <div class="avatar-selector">
-                    <img id="current-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=User&backgroundColor=4f46e5" alt="Avatar">
-                    <div class="avatar-options" id="avatar-options">
-                        <!-- Avatars modernes -->
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex&backgroundColor=4f46e5" data-seed="Alex">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Taylor&backgroundColor=8b5cf6" data-seed="Taylor">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jordan&backgroundColor=10b981" data-seed="Jordan">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Casey&backgroundColor=f59e0b" data-seed="Casey">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Riley&backgroundColor=ef4444" data-seed="Riley">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Skyler&backgroundColor=ec4899" data-seed="Skyler">
-                        <!-- Nouveaux avatars -->
-                        <img src="https://api.dicebear.com/7.x/bottts/svg?seed=Robot&backgroundColor=6b7280" data-seed="Robot" data-type="bottts">
-                        <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Pixel&backgroundColor=3b82f6" data-seed="Pixel" data-type="pixel-art">
-                        <img src="https://api.dicebear.com/7.x/thumbs/svg?seed=Thumb&backgroundColor=10b981" data-seed="Thumb" data-type="thumbs">
+            <!-- Zone de chat principale -->
+            <div class="main-chat">
+                <div class="chat-header">
+                    <div class="room-info">
+                        <h2 id="current-room-name">Général</h2>
+                        <p id="room-description">Salon de discussion général</p>
                     </div>
+                    <div class="typing-indicator" id="typing-indicator"></div>
                 </div>
-                <div class="user-info">
-                    <input type="text" id="username-input" placeholder="Votre pseudo" value="Une personne">
-                    <div class="user-status">
-                        <span class="status-indicator online"></span>
-                        <span id="user-count">0</span> connectés
-                    </div>
+                
+                <div class="messages-container" id="messages-container">
+                    <!-- Messages seront ajoutés ici -->
                 </div>
-            </div>
-            
-            <div class="rooms-section">
-                <h3><i class="fas fa-hashtag"></i> Salons de discussion</h3>
-                <div class="room-list" id="room-list">
-                    <!-- Les salons seront ajoutés ici dynamiquement -->
-                    <div class="room-item active" data-room="general">
-                        <i class="fas fa-globe"></i>
-                        <span>Général</span>
-                        <span class="room-counter">0</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="online-users">
-                <h3><i class="fas fa-users"></i> En ligne</h3>
-                <div class="user-list" id="user-list">
-                    <!-- Les utilisateurs en ligne seront ajoutés ici -->
-                </div>
-            </div>
-        </div>
-        
-        <!-- Zone de chat principale -->
-        <div class="main-chat">
-            <div class="chat-header">
-                <div class="room-info">
-                    <h2 id="current-room">Général</h2>
-                    <p id="room-description">Salon de discussion général</p>
-                </div>
-                <div class="typing-indicator" id="typing-indicator">
-                    <!-- Indicateur de saisie -->
-                </div>
-            </div>
-            
-            <div class="messages-container" id="messages-container">
-                <!-- Les messages seront ajoutés ici dynamiquement -->
-                <div class="welcome-message">
-                    <div class="welcome-avatar">
-                        <i class="fas fa-robot"></i>
-                    </div>
-                    <div class="welcome-text">
-                        <h3>Bienvenue sur ChatRoom Pro!</h3>
-                        <p>Rejoignez un salon ou créez-en un nouveau pour commencer à discuter.</p>
-                        <p>Vous pouvez changer votre avatar et votre pseudo à tout moment.</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="message-input-area">
-                <div class="input-container">
-                    <input type="text" id="message-input" placeholder="Écrivez votre message ici..." autocomplete="off">
-                    <div class="input-actions">
+                
+                <div class="message-input-area">
+                    <div class="input-wrapper">
+                        <input type="text" 
+                               id="message-input" 
+                               placeholder="Écrivez votre message..." 
+                               autocomplete="off"
+                               maxlength="500">
                         <button id="send-btn" class="btn-send">
-                            <i class="fas fa-paper-plane"></i> Envoyer
+                            <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
-                </div>
-                <div class="message-options">
-                    <span class="hint"><i class="fas fa-info-circle"></i> Appuyez sur Entrée pour envoyer</span>
-                    <span id="message-counter" class="message-counter">0/100 messages</span>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Modal pour créer un salon -->
-        <div id="create-room-modal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Créer un nouveau salon</h3>
-                    <span class="close-modal">&times;</span>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="room-name">Nom du salon</label>
-                        <input type="text" id="room-name" placeholder="Ex: Développement Web">
+                    <div class="input-hint">
+                        <span>Appuyez sur Entrée pour envoyer</span>
                     </div>
-                    <div class="form-group">
-                        <label for="room-description-input">Description (optionnel)</label>
-                        <textarea id="room-description-input" placeholder="Description du salon..."></textarea>
-                    </div>
-                    <button id="confirm-create-room" class="btn-confirm">Créer le salon</button>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- Scripts de l'application -->
-    <script type="module" src="./app.js?v=5"></script>
+
+    <!-- Modal pour créer un salon -->
+    <div id="create-room-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle"></i> Créer un salon</h3>
+                <button class="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="new-room-name">Nom du salon</label>
+                    <input type="text" 
+                           id="new-room-name" 
+                           placeholder="Ex: Développement" 
+                           maxlength="30">
+                    <div class="char-count">30 caractères maximum</div>
+                </div>
+                <div class="form-group">
+                    <label for="new-room-description">Description (optionnel)</label>
+                    <textarea id="new-room-description" 
+                              placeholder="Décrivez le sujet du salon..."
+                              rows="3"
+                              maxlength="100"></textarea>
+                    <div class="char-count">100 caractères maximum</div>
+                </div>
+                <div class="modal-actions">
+                    <button id="confirm-create-room" class="btn-primary">Créer</button>
+                    <button class="btn-secondary close-modal">Annuler</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
 </body>
 </html>
