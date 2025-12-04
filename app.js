@@ -9,7 +9,7 @@ import {
     update, 
     remove,
     onChildAdded,
-    onChildRemoved
+    get
 } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -32,8 +32,7 @@ let currentUser = {
 };
 
 let rooms = {};
-let onlineUsers = new Map(); // Pour éviter les pseudos dupliqués
-let typingUsers = new Map();
+let onlineUsers = new Map();
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,7 +59,6 @@ function setupEventListeners() {
     document.getElementById('username').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') joinChat();
     });
-    document.getElementById('create-room-btn').addEventListener('click', showCreateRoomModal);
 
     // Chat
     document.getElementById('logout-btn').addEventListener('click', logout);
@@ -89,7 +87,6 @@ function loadInitialData() {
         const data = snapshot.val();
         if (data) {
             rooms = data;
-            updateRoomSelect();
         } else {
             // Créer le salon général par défaut
             rooms = {
@@ -114,38 +111,10 @@ function updateOnlineCount() {
     });
 }
 
-function updateRoomSelect() {
-    const select = document.getElementById('room-select');
-    const currentValue = select.value;
-    
-    // Garder seulement l'option Général et vider le reste
-    while (select.options.length > 1) {
-        select.remove(1);
-    }
-    
-    // Ajouter les autres salons
-    Object.entries(rooms).forEach(([id, room]) => {
-        if (id !== 'general') {
-            const option = document.createElement('option');
-            option.value = id;
-            option.textContent = room.name;
-            select.appendChild(option);
-        }
-    });
-    
-    // Restaurer la sélection précédente si possible
-    if (rooms[currentValue]) {
-        select.value = currentValue;
-    }
-}
-
 // Gestion des utilisateurs
 async function joinChat() {
     const usernameInput = document.getElementById('username');
-    const roomSelect = document.getElementById('room-select');
-    
     const username = usernameInput.value.trim();
-    const roomId = roomSelect.value;
     
     // Validation
     if (!username) {
@@ -160,55 +129,63 @@ async function joinChat() {
     
     // Vérifier si le pseudo est déjà utilisé
     const usersRef = ref(db, 'users');
-    const snapshot = await getSnapshotOnce(usersRef);
-    const users = snapshot.val() || {};
     
-    const isUsernameTaken = Object.values(users).some(user => 
-        user.name.toLowerCase() === username.toLowerCase() && user.id !== currentUser.id
-    );
-    
-    if (isUsernameTaken) {
-        showError(usernameInput, "Ce pseudo est déjà utilisé. Veuillez en choisir un autre.");
-        return;
-    }
-    
-    // Créer l'utilisateur
-    currentUser = {
-        id: generateUserId(),
-        name: username,
-        currentRoom: roomId,
-        joinedAt: Date.now()
-    };
-    
-    // Enregistrer l'utilisateur dans Firebase
-    const userRef = ref(db, `users/${currentUser.id}`);
-    await set(userRef, {
-        id: currentUser.id,
-        name: currentUser.name,
-        currentRoom: currentUser.currentRoom,
-        lastActive: Date.now(),
-        isTyping: false
-    });
-    
-    // Mettre à jour périodiquement l'activité
-    setInterval(() => {
-        if (currentUser.id) {
-            update(userRef, { lastActive: Date.now() });
+    try {
+        const snapshot = await get(usersRef);
+        const users = snapshot.val() || {};
+        
+        const isUsernameTaken = Object.values(users).some(user => {
+            // Vérification de sécurité avant d'accéder à .toLowerCase()
+            return user && user.name && user.name.toLowerCase() === username.toLowerCase();
+        });
+        
+        if (isUsernameTaken) {
+            showError(usernameInput, "Ce pseudo est déjà utilisé. Veuillez en choisir un autre.");
+            return;
         }
-    }, 30000);
-    
-    // Afficher l'interface de chat
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('chat-interface').style.display = 'block';
-    
-    // Mettre à jour l'interface
-    document.getElementById('current-username').textContent = currentUser.name;
-    
-    // Rejoindre le salon
-    joinRoom(roomId);
-    
-    // Écouter les changements d'utilisateurs
-    setupUsersListener();
+        
+        // Créer l'utilisateur
+        currentUser = {
+            id: generateUserId(),
+            name: username,
+            currentRoom: "general", // Toujours rejoindre le salon général par défaut
+            joinedAt: Date.now()
+        };
+        
+        // Enregistrer l'utilisateur dans Firebase
+        const userRef = ref(db, `users/${currentUser.id}`);
+        await set(userRef, {
+            id: currentUser.id,
+            name: currentUser.name,
+            currentRoom: currentUser.currentRoom,
+            lastActive: Date.now(),
+            isTyping: false
+        });
+        
+        // Mettre à jour périodiquement l'activité
+        setInterval(() => {
+            if (currentUser.id) {
+                update(userRef, { lastActive: Date.now() });
+            }
+        }, 30000);
+        
+        // Afficher l'interface de chat
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('chat-interface').style.display = 'block';
+        
+        // Mettre à jour l'interface
+        document.getElementById('current-username').textContent = currentUser.name;
+        
+        // Rejoindre le salon général
+        joinRoom("general");
+        
+        // Écouter les changements d'utilisateurs
+        setupUsersListener();
+        
+    } catch (error) {
+        console.error("Erreur lors de la connexion:", error);
+        showError(usernameInput, "Erreur de connexion au serveur");
+    }
 }
 
 function logout() {
@@ -227,13 +204,13 @@ function logout() {
     // Réinitialiser
     currentUser = { id: null, name: "", currentRoom: "general" };
     onlineUsers.clear();
-    typingUsers.clear();
     
     // Retour à l'écran de connexion
     document.getElementById('chat-interface').style.display = 'none';
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('username').value = '';
     document.getElementById('message-input').value = '';
+    document.getElementById('username').focus();
 }
 
 function setupUsersListener() {
@@ -248,6 +225,8 @@ function setupUsersListener() {
         userList.innerHTML = '';
         
         Object.values(users).forEach(user => {
+            if (!user || !user.id) return;
+            
             if (user.id === currentUser.id) return;
             
             onlineUsers.set(user.id, user);
@@ -256,10 +235,7 @@ function setupUsersListener() {
             userElement.className = 'user-item';
             userElement.innerHTML = `
                 <span class="status online"></span>
-                <span>${user.name}</span>
-                ${user.currentRoom === currentUser.currentRoom ? 
-                    `<span class="typing-indicator-small">${user.isTyping ? 'écrit...' : ''}</span>` : 
-                    ''}
+                <span>${user.name || 'Utilisateur'}</span>
             `;
             userList.appendChild(userElement);
         });
@@ -271,12 +247,15 @@ function joinRoom(roomId) {
     if (!currentUser.id || !db) return;
     
     const room = rooms[roomId];
-    if (!room) return;
+    if (!room) {
+        console.error("Salon non trouvé:", roomId);
+        return;
+    }
     
     // Quitter le salon précédent
     if (currentUser.currentRoom) {
         const prevRoomRef = ref(db, `rooms/${currentUser.currentRoom}/users/${currentUser.id}`);
-        remove(prevRoomRef);
+        remove(prevRoomRef).catch(console.error);
     }
     
     // Mettre à jour la salle courante
@@ -284,14 +263,17 @@ function joinRoom(roomId) {
     
     // Mettre à jour l'utilisateur
     const userRef = ref(db, `users/${currentUser.id}`);
-    update(userRef, { currentRoom: roomId });
+    update(userRef, { 
+        currentRoom: roomId,
+        lastActive: Date.now()
+    });
     
     // Rejoindre le nouveau salon
     const roomUserRef = ref(db, `rooms/${roomId}/users/${currentUser.id}`);
     set(roomUserRef, {
         name: currentUser.name,
         joined: Date.now()
-    });
+    }).catch(console.error);
     
     // Mettre à jour l'interface
     document.getElementById('current-room-name').textContent = room.name;
@@ -312,9 +294,13 @@ function joinRoom(roomId) {
 
 function updateRoomList() {
     const roomList = document.getElementById('room-list');
+    if (!roomList) return;
+    
     roomList.innerHTML = '';
     
     Object.entries(rooms).forEach(([id, room]) => {
+        if (!room || !room.name) return;
+        
         const roomElement = document.createElement('div');
         roomElement.className = `room-item ${id === currentUser.currentRoom ? 'active' : ''}`;
         roomElement.setAttribute('data-room', id);
@@ -332,12 +318,17 @@ function updateRoomList() {
         onValue(roomUsersRef, (snapshot) => {
             const users = snapshot.val() || {};
             const count = Object.keys(users).length;
-            document.getElementById(`count-${id}`).textContent = count;
+            const countElement = document.getElementById(`count-${id}`);
+            if (countElement) {
+                countElement.textContent = count;
+            }
         });
     });
 }
 
 function showCreateRoomModal() {
+    if (!currentUser.id) return;
+    
     document.getElementById('create-room-modal').style.display = 'flex';
     document.getElementById('new-room-name').focus();
 }
@@ -349,6 +340,8 @@ function hideCreateRoomModal() {
 }
 
 async function createRoom() {
+    if (!currentUser.id || !db) return;
+    
     const nameInput = document.getElementById('new-room-name');
     const descInput = document.getElementById('new-room-description');
     
@@ -365,43 +358,52 @@ async function createRoom() {
         return;
     }
     
-    // Vérifier si le nom existe déjà
-    const roomExists = Object.values(rooms).some(room => 
-        room.name.toLowerCase() === name.toLowerCase()
-    );
-    
-    if (roomExists) {
-        showError(nameInput, "Un salon avec ce nom existe déjà");
-        return;
+    try {
+        // Vérifier si le nom existe déjà
+        const roomExists = Object.values(rooms).some(room => 
+            room && room.name && room.name.toLowerCase() === name.toLowerCase()
+        );
+        
+        if (roomExists) {
+            showError(nameInput, "Un salon avec ce nom existe déjà");
+            return;
+        }
+        
+        // Créer le salon
+        const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        const newRoom = {
+            name: name,
+            description: description,
+            created: Date.now(),
+            createdBy: currentUser.id,
+            creatorName: currentUser.name
+        };
+        
+        // Ajouter à Firebase
+        const roomRef = ref(db, `rooms/${roomId}`);
+        await set(roomRef, newRoom);
+        
+        // Mettre à jour localement
+        rooms[roomId] = newRoom;
+        
+        // Rejoindre le nouveau salon
+        joinRoom(roomId);
+        
+        // Fermer le modal
+        hideCreateRoomModal();
+        
+    } catch (error) {
+        console.error("Erreur lors de la création du salon:", error);
+        showError(nameInput, "Erreur lors de la création du salon");
     }
-    
-    // Créer le salon
-    const roomId = 'room_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    
-    const newRoom = {
-        name: name,
-        description: description,
-        created: Date.now(),
-        createdBy: currentUser.id
-    };
-    
-    // Ajouter à Firebase
-    const roomRef = ref(db, `rooms/${roomId}`);
-    await set(roomRef, newRoom);
-    
-    // Mettre à jour localement
-    rooms[roomId] = newRoom;
-    
-    // Rejoindre le nouveau salon
-    joinRoom(roomId);
-    
-    // Fermer le modal
-    hideCreateRoomModal();
 }
 
 // Gestion des messages
 function loadMessages(roomId) {
     const messagesContainer = document.getElementById('messages-container');
+    if (!messagesContainer) return;
+    
     messagesContainer.innerHTML = '';
     
     const messagesRef = ref(db, `messages/${roomId}`);
@@ -438,18 +440,9 @@ function listenToNewMessages(roomId) {
 
 function displayMessage(message) {
     const messagesContainer = document.getElementById('messages-container');
-    const isOwnMessage = message.userId === currentUser.id;
+    if (!messagesContainer) return;
     
-    // Vérifier si c'est un message système
-    if (message.type === 'system') {
-        const systemMsg = document.createElement('div');
-        systemMsg.className = 'system-message';
-        systemMsg.innerHTML = `
-            <div class="message-text">${message.text}</div>
-        `;
-        messagesContainer.appendChild(systemMsg);
-        return;
-    }
+    const isOwnMessage = message.userId === currentUser.id;
     
     const messageElement = document.createElement('div');
     messageElement.className = `message ${isOwnMessage ? 'own' : ''}`;
@@ -461,10 +454,10 @@ function displayMessage(message) {
     messageElement.innerHTML = `
         <div class="message-content">
             <div class="message-header">
-                <span class="message-sender">${message.userName}</span>
+                <span class="message-sender">${message.userName || 'Utilisateur'}</span>
                 <span class="message-time">${timeString}</span>
             </div>
-            <div class="message-text">${message.text}</div>
+            <div class="message-text">${message.text || ''}</div>
         </div>
     `;
     
@@ -473,6 +466,8 @@ function displayMessage(message) {
 
 function sendMessage() {
     const input = document.getElementById('message-input');
+    if (!input) return;
+    
     const text = input.value.trim();
     
     if (!text || !currentUser.id || !db) return;
@@ -549,11 +544,13 @@ function listenToTyping(roomId) {
     onValue(typingRef, (snapshot) => {
         const typingData = snapshot.val() || {};
         const indicator = document.getElementById('typing-indicator');
+        if (!indicator) return;
         
         // Filtrer les utilisateurs qui tapent (sauf soi-même)
         const typingUsersList = Object.values(typingData)
-            .filter(user => user.isTyping && user.userName !== currentUser.name)
-            .map(user => user.userName);
+            .filter(user => user && user.isTyping && user.userName !== currentUser.name)
+            .map(user => user.userName)
+            .filter(name => name); // Filtrer les noms vides
         
         if (typingUsersList.length === 0) {
             indicator.textContent = '';
@@ -573,6 +570,10 @@ function generateUserId() {
 }
 
 function showError(inputElement, message) {
+    // Supprimer l'ancienne erreur
+    const oldError = inputElement.parentNode.querySelector('.error-message');
+    if (oldError) oldError.remove();
+    
     // Ajouter une classe d'erreur
     inputElement.classList.add('error');
     
@@ -589,14 +590,11 @@ function showError(inputElement, message) {
         border-radius: var(--radius-sm);
     `;
     
-    // Supprimer l'ancienne erreur
-    const oldError = inputElement.parentNode.querySelector('.error-message');
-    if (oldError) oldError.remove();
-    
     inputElement.parentNode.appendChild(errorDiv);
     
     // Focus sur le champ
     inputElement.focus();
+    inputElement.select();
     
     // Supprimer la classe d'erreur après 3 secondes
     setTimeout(() => {
@@ -607,16 +605,9 @@ function showError(inputElement, message) {
 
 function scrollToBottom() {
     const container = document.getElementById('messages-container');
-    container.scrollTop = container.scrollHeight;
-}
-
-// Fonction utilitaire pour obtenir une snapshot une fois
-function getSnapshotOnce(ref) {
-    return new Promise((resolve) => {
-        onValue(ref, (snapshot) => {
-            resolve(snapshot);
-        }, { onlyOnce: true });
-    });
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
 }
 
 // Gestion de la fermeture de la page
