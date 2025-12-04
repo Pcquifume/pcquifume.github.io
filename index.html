@@ -9,44 +9,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- Écran de connexion -->
+    <!-- Écran de connexion simplifié -->
     <div id="login-screen" class="login-screen">
         <div class="login-container">
             <div class="login-header">
                 <i class="fas fa-comments"></i>
-                <h1>Chat </h1>
-                <p>Rejoignez la conversation en toute simplicité</p>
+                <h1>Chat</h1>
+                <p>Rejoignez la conversation</p>
             </div>
             
             <div class="login-form">
                 <div class="form-group">
-                    <label for="username">Votre pseudo</label>
-                    <input type="text" id="username" placeholder="Entrez votre pseudo" required>
-                    <div class="requirements">
-                        <p><i class="fas fa-info-circle"></i> Le pseudo doit être unique et contenir 3-20 caractères</p>
-                    </div>
+                    <input type="text" 
+                           id="username" 
+                           placeholder="Votre pseudo (3-20 caractères)" 
+                           required
+                           maxlength="20">
                 </div>
                 
-                <div class="form-group">
-                    <label for="room-select">Rejoindre un salon</label>
-                    <select id="room-select">
-                        <option value="general">Général</option>
-                        <!-- Les autres salons seront ajoutés dynamiquement -->
-                    </select>
+                <div class="login-info">
+                    <p><i class="fas fa-users"></i> <span id="online-count">0</span> personnes en ligne</p>
                 </div>
                 
-                <div class="form-actions">
-                    <button id="join-chat-btn" class="btn-primary">
-                        <i class="fas fa-sign-in-alt"></i> Rejoindre le chat
-                    </button>
-                    <button id="create-room-btn" class="btn-secondary">
-                        <i class="fas fa-plus"></i> Créer un salon
-                    </button>
-                </div>
+                <button id="join-chat-btn" class="btn-primary">
+                    <i class="fas fa-sign-in-alt"></i> Rejoindre le chat
+                </button>
             </div>
             
             <div class="login-footer">
-                <p><i class="fas fa-users"></i> <span id="online-count">0</span> personnes en ligne</p>
+                <p>Tous les messages sont publics • Soyez respectueux</p>
             </div>
         </div>
     </div>
@@ -155,7 +146,6 @@
         </div>
     </div>
 
-    <script type="module" src="app.js?v=2"></script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
-
