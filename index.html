@@ -39,6 +39,47 @@
             color: #1f2937; /* Gray 800 */
             border-radius: 1rem 1rem 1rem 0;
         }
+        /* Animation pour l'indicateur de frappe */
+        .dot-flashing {
+            position: relative;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #9ca3af; /* gray-400 */
+            color: #9ca3af;
+            animation: dotFlashing 1s infinite linear alternate;
+            animation-delay: 0.5s;
+        }
+        .dot-flashing::before, .dot-flashing::after {
+            content: "";
+            display: inline-block;
+            position: absolute;
+            top: 0;
+        }
+        .dot-flashing::before {
+            left: -8px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            color: #9ca3af;
+            animation: dotFlashing 1s infinite alternate;
+            animation-delay: 0s;
+        }
+        .dot-flashing::after {
+            left: 8px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #9ca3af;
+            color: #9ca3af;
+            animation: dotFlashing 1s infinite alternate;
+            animation-delay: 1s;
+        }
+        @keyframes dotFlashing {
+            0% { background-color: #9ca3af; }
+            50%, 100% { background-color: #d1d5db; /* gray-300 */ }
+        }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
@@ -124,8 +165,25 @@
         
         // Les variables globales sont fournies par l'environnement Canvas
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Configuration Firebase fournie par l'utilisateur comme valeur par défaut
+        const userProvidedConfig = {
+            apiKey: "AIzaSyCb5Xkn-d2xiyQ8isQcan5v7L-i5RbxcBs",
+            authDomain: "chat-app-4865d.firebaseapp.com",
+            databaseURL: "https://chat-app-4865d-default-rtdb.europe-west1.firebasedatabase.app/", 
+            projectId: "chat-app-4865d",
+            storageBucket: "chat-app-4865d.firebasestorage.app",
+            messagingSenderId: "251174960384",
+            appId: "1:251174960384:web:c1fa118f999f7eb02d47e5",
+            measurementId: "G-CQKD7W7TKE"
+        };
+        
+        // Utiliser la configuration fournie par Canvas si disponible, sinon utiliser le fallback
+        let firebaseConfig = userProvidedConfig;
+        if (typeof __firebase_config !== 'undefined' && Object.keys(JSON.parse(__firebase_config)).length > 0) {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
 
         let app, db, auth;
         let userId = null;
@@ -189,8 +247,9 @@
          */
         async function initializeFirebase() {
             try {
-                if (Object.keys(firebaseConfig).length === 0) {
-                    throw new Error("La configuration Firebase n'est pas disponible.");
+                // Vérifier si la config est utilisable (avec le fallback, elle devrait l'être)
+                if (!firebaseConfig.apiKey) {
+                    throw new Error("La configuration Firebase n'est pas complète.");
                 }
 
                 app = initializeApp(firebaseConfig);
@@ -218,6 +277,7 @@
             } catch (error) {
                 console.error("Erreur lors de l'initialisation de Firebase ou de l'authentification:", error);
                 nicknameScreen.classList.remove('hidden');
+                nicknameScreen.style.display = 'block';
                 chatInterface.classList.add('hidden');
                 errorMessage.textContent = "Erreur de connexion : " + error.message;
                 errorMessage.classList.remove('hidden');
@@ -349,56 +409,10 @@
                 typingIndicator.innerHTML = `<div class="flex items-center space-x-2"><div class="dot-flashing"></div><span>${text}</span></div>`;
                 typingIndicator.classList.remove('opacity-0');
             } else {
+                typingIndicator.innerHTML = '';
                 typingIndicator.classList.add('opacity-0');
             }
         }
-
-        // Ajout d'un style pour l'animation des points de frappe
-        const style = document.createElement('style');
-        style.textContent = `
-            .dot-flashing {
-                position: relative;
-                width: 6px;
-                height: 6px;
-                border-radius: 50%;
-                background-color: #9ca3af; /* gray-400 */
-                color: #9ca3af;
-                animation: dotFlashing 1s infinite linear alternate;
-                animation-delay: 0.5s;
-            }
-            .dot-flashing::before, .dot-flashing::after {
-                content: "";
-                display: inline-block;
-                position: absolute;
-                top: 0;
-            }
-            .dot-flashing::before {
-                left: -8px;
-                width: 6px;
-                height: 6px;
-                border-radius: 50%;
-                background-color: #9ca3af;
-                color: #9ca3af;
-                animation: dotFlashing 1s infinite alternate;
-                animation-delay: 0s;
-            }
-            .dot-flashing::after {
-                left: 8px;
-                width: 6px;
-                height: 6px;
-                border-radius: 50%;
-                background-color: #9ca3af;
-                color: #9ca3af;
-                animation: dotFlashing 1s infinite alternate;
-                animation-delay: 1s;
-            }
-            @keyframes dotFlashing {
-                0% { background-color: #9ca3af; }
-                50%, 100% { background-color: #d1d5db; /* gray-300 */ }
-            }
-        `;
-        document.head.appendChild(style);
-
 
         // --- Gestion de l'Indicateur de Frappe de l'Utilisateur Actuel ---
 
@@ -498,7 +512,7 @@
             messageDiv.className = `flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`;
 
             const bubbleClass = isOwnMessage ? 'message-bubble-self' : 'message-bubble-other';
-            const nicknameColor = isOwnMessage ? 'text-indigo-400' : 'text-gray-600';
+            const nicknameColor = isOwnMessage ? 'text-indigo-500' : 'text-gray-600'; // Couleur différente pour les autres
 
             messageDiv.innerHTML = `
                 <div class="max-w-xs md:max-w-md lg:max-w-lg">
@@ -553,7 +567,7 @@
                 // Mise à jour de l'état local du canal
                 currentChannel = newChannel;
 
-                // Mise à jour de l'interface utilisateur
+                // Mise à jour de l'interface utilisateur (boutons)
                 channelButtons.forEach(btn => {
                     btn.classList.remove('bg-indigo-100', 'text-indigo-800');
                     btn.classList.add('text-gray-700', 'hover:bg-gray-200');
